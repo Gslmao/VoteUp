@@ -1,14 +1,6 @@
-import { Pool } from 'pg';
+import { createClient } from '@supabase/supabase-js';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_ANON_KEY!; // use service role key for admin ops if needed
 
-export async function query(text: string, params?: any[]) {
-  const client = await pool.connect();
-  try {
-    return await client.query(text, params);
-  } finally {
-    client.release();
-  }
-}
+export const supabase = createClient(supabaseUrl, supabaseKey);

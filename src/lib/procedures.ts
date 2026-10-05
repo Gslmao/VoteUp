@@ -1,4 +1,4 @@
-import { query } from './db';
+import { supabase } from './db';
 
 export async function castVote(params: {
   voterId: number;
@@ -7,43 +7,51 @@ export async function castVote(params: {
   evmId: number;
   candidateId: number;
 }) {
-  return query(
-    `CALL cast_vote($1, $2, $3, $4, $5)`,
-    [params.voterId, params.electionId, params.boothId, params.evmId, params.candidateId]
-  );
+  const { data, error } = await supabase.rpc('cast_vote', {
+    p_voter_id: params.voterId,
+    p_election_id: params.electionId,
+    p_booth_id: params.boothId,
+    p_evm_id: params.evmId,
+    p_candidate_id: params.candidateId,
+  });
+  if (error) throw error;
+  return { data };
 }
 
 export async function getLiveTurnout(constituencyId: number) {
-  return query(
-    `SELECT * FROM view_live_turnout WHERE constituency_id = $1`,
-    [constituencyId]
-  );
+  const { data, error } = await supabase
+    .from('view_live_turnout')
+    .select('*')
+    .eq('constituency_id', constituencyId);
+  if (error) throw error;
+  return { rows: data };
 }
 
 export async function getElections(status?: string) {
-  if (status) {
-    return query(`SELECT * FROM elections WHERE status = $1`, [status]);
-  }
-  return query(`SELECT * FROM elections`);
+  let query = supabase.from('elections').select('*');
+  if (status) query = query.eq('status', status);
+  const { data, error } = await query;
+  if (error) throw error;
+  return { rows: data };
 }
 
 export async function getElectionResults(electionId: number) {
-  return query(
-    `SELECT * FROM view_results_leaderboard WHERE election_id = $1`,
-    [electionId]
-  );
+  const { data, error } = await supabase
+    .from('view_results_leaderboard')
+    .select('*')
+    .eq('election_id', electionId);
+  if (error) throw error;
+  return { rows: data };
 }
 
 export async function getCandidates(electionId?: number) {
+  let query = supabase.from('candidates').select('*, nominations(election_id, constituency_id)');
   if (electionId) {
-    return query(
-      `SELECT c.*, n.election_id FROM candidates c 
-       JOIN nominations n ON c.id = n.candidate_id 
-       WHERE n.election_id = $1`,
-      [electionId]
-    );
+    query = query.eq('nominations.election_id', electionId);
   }
-  return query(`SELECT * FROM candidates`);
+  const { data, error } = await query;
+  if (error) throw error;
+  return { rows: data };
 }
 
 export async function createCandidate(data: {
@@ -53,23 +61,23 @@ export async function createCandidate(data: {
   electionId: number;
   constituencyId: number;
 }) {
-  const client = await query('BEGIN');
-  try {
-    const candidateResult = await query(
-      `INSERT INTO candidates (name, party, symbol_url) VALUES ($1, $2, $3) RETURNING id`,
-      [data.name, data.party, data.symbol_url || null]
-    );
-    const candidateId = candidateResult.rows[0].id;
-    await query(
-      `INSERT INTO nominations (candidate_id, election_id, constituency_id) VALUES ($1, $2, $3)`,
-      [candidateId, data.electionId, data.constituencyId]
-    );
-    await query('COMMIT');
-    return { id: candidateId, ...data };
-  } catch (e) {
-    await query('ROLLBACK');
-    throw e;
-  }
+  // Insert candidate
+  const { data: candidate, error: candError } = await supabase
+    .from('candidates')
+    .insert({ name: data.name, party: data.party, symbol_url: data.symbol_url || null })
+    .select('id')
+    .single();
+  if (candError) throw candError;
+
+  // Insert nomination
+  const { error: nomError } = await supabase.from('nominations').insert({
+    candidate_id: candidate.id,
+    election_id: data.electionId,
+    constituency_id: data.constituencyId,
+  });
+  if (nomError) throw nomError;
+
+  return { id: candidate.id, ...data };
 }
 
 export async function createVoter(data: {
@@ -80,15 +88,26 @@ export async function createVoter(data: {
   idDocumentType: string;
   idDocumentNumber: string;
 }) {
-  return query(
-    `INSERT INTO voters (name, dob, address, constituency_id, id_document_type, id_document_number)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [data.name, data.dob, data.address, data.constituencyId, data.idDocumentType, data.idDocumentNumber]
-  );
+  const { data: result, error } = await supabase
+    .from('voters')
+    .insert({
+      name: data.name,
+      dob: data.dob,
+      address: data.address,
+      constituency_id: data.constituencyId,
+      id_document_type: data.idDocumentType,
+      id_document_number: data.idDocumentNumber,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return { rows: [result] };
 }
 
 export async function getBooths() {
-  return query(`SELECT * FROM polling_booths ORDER BY id`);
+  const { data, error } = await supabase.from('polling_booths').select('*').order('id');
+  if (error) throw error;
+  return { rows: data };
 }
 
 export async function createBooth(data: {
@@ -96,28 +115,38 @@ export async function createBooth(data: {
   constituencyId: number;
   address: string;
 }) {
-  return query(
-    `INSERT INTO polling_booths (name, constituency_id, address) VALUES ($1, $2, $3) RETURNING *`,
-    [data.name, data.constituencyId, data.address]
-  );
+  const { data: result, error } = await supabase
+    .from('polling_booths')
+    .insert({ name: data.name, constituency_id: data.constituencyId, address: data.address })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return { rows: [result] };
 }
 
 export async function getEVMs() {
-  return query(`SELECT * FROM evms ORDER BY id`);
+  const { data, error } = await supabase.from('evms').select('*').order('id');
+  if (error) throw error;
+  return { rows: data };
 }
 
 export async function createEVM(data: {
   serialNumber: string;
   boothId: number;
 }) {
-  return query(
-    `INSERT INTO evms (serial_number, booth_id) VALUES ($1, $2) RETURNING *`,
-    [data.serialNumber, data.boothId]
-  );
+  const { data: result, error } = await supabase
+    .from('evms')
+    .insert({ serial_number: data.serialNumber, booth_id: data.boothId })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return { rows: [result] };
 }
 
 export async function getComplaints() {
-  return query(`SELECT * FROM complaints ORDER BY created_at DESC`);
+  const { data, error } = await supabase.from('complaints').select('*').order('created_at', { ascending: false });
+  if (error) throw error;
+  return { rows: data };
 }
 
 export async function createComplaint(data: {
@@ -126,8 +155,16 @@ export async function createComplaint(data: {
   electionId?: number;
   description: string;
 }) {
-  return query(
-    `INSERT INTO complaints (voter_id, booth_id, election_id, description) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [data.voterId || null, data.boothId || null, data.electionId || null, data.description]
-  );
+  const { data: result, error } = await supabase
+    .from('complaints')
+    .insert({
+      voter_id: data.voterId || null,
+      booth_id: data.boothId || null,
+      election_id: data.electionId || null,
+      description: data.description,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return { rows: [result] };
 }
