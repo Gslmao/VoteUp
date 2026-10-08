@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getEVMs, createEVM } from '@/lib/procedures';
 import { createEVMSchema } from '@/lib/validation';
+import { withAdminAuth } from '@/lib/adminAuth';
 
-export async function GET() {
+async function getHandler() {
   try {
     const result = await getEVMs();
     return NextResponse.json(result.rows);
@@ -12,7 +13,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   try {
     const body = await request.json();
     const parsed = createEVMSchema.safeParse(body);
@@ -37,3 +38,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export const GET = withAdminAuth(async () => getHandler());
+export const POST = withAdminAuth(async (req) => postHandler(req));
