@@ -168,3 +168,26 @@ export async function createComplaint(data: {
   if (error) throw error;
   return { rows: [result] };
 }
+
+export async function createAdmin(data: {
+  email: string;
+  passwordHash: string;
+}) {
+  const { data: result, error } = await supabase
+    .from('admins')
+    .insert({ email: data.email, password_hash: data.passwordHash })
+    .select('id, email')
+    .single();
+  if (error) throw error;
+  return { rows: [result] };
+}
+
+export async function getAdminByEmail(email: string) {
+  const { data, error } = await supabase
+    .from('admins')
+    .select('id, email, password_hash')
+    .eq('email', email)
+    .single();
+  if (error) throw error;
+  return data;
+}
