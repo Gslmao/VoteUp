@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createVoter } from '@/lib/procedures';
-import { createVoterSchema } from '@/lib/validation';
+import { getVoterByCredentials } from '@/lib/procedures';
+import { voterLoginSchema } from '@/lib/validation';
 import { createToken } from '@/lib/auth';
 
 export const runtime = 'nodejs';
@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const parsed = createVoterSchema.safeParse(body);
+    const parsed = voterLoginSchema.safeParse(body);
     
     if (!parsed.success) {
       return NextResponse.json(
@@ -17,10 +17,14 @@ export async function POST(request: Request) {
       );
     }
     
-    const result = await createVoter(parsed.data);
-    const voterId = result.rows[0].voter_id as number;
+    const voter = await getVoterByCredentials(parsed.data.epicNumber, parsed.data.dob);
+    if (!voter) {
+      return NextResponse.json({ error: 'Invalid voter credentials' }, { status: 401 });
+    }
+
+    const voterId = voter.voter_id;
     const token = await createToken({ role: 'voter', voterId });
-    const response = NextResponse.json({ success: true, voterId });
+    const response = NextResponse.json({ success: true });
     response.cookies.set('voter_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -30,13 +34,7 @@ export async function POST(request: Request) {
     });
     return response;
   } catch (err: unknown) {
-    console.error('Error creating voter:', err);
-    if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
-      return NextResponse.json(
-        { error: 'Voter with this ID document already exists' },
-        { status: 409 }
-      );
-    }
+    console.error('Error logging in voter:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

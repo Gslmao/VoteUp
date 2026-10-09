@@ -78,17 +78,12 @@ export async function createCandidate(data: {
   return result.rows[0];
 }
 
-export async function createVoter(data: {
-  epicNumber: string;
-  fullName: string;
-  dob: string;
-  constituencyId: number;
-}) {
-  return query(
-    `INSERT INTO voters(epic_number, full_name, dob, constituency_id)
-     VALUES ($1, $2, $3, $4) RETURNING voter_id`,
-    [data.epicNumber, data.fullName, data.dob, data.constituencyId]
+export async function getVoterByCredentials(epicNumber: string, dob: string) {
+  const result = await query<{ voter_id: number }>(
+    'SELECT voter_id FROM voters WHERE epic_number = $1 AND dob = $2',
+    [epicNumber, dob]
   );
+  return result.rows[0] ?? null;
 }
 
 export async function getBooths() {

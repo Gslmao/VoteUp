@@ -20,7 +20,7 @@ Next.js 16 (App Router) + PostgreSQL backend for an election voting system. All 
 ```
 src/
 ├── app/api/
-│   ├── voters/route.ts                    # POST register voter + set voter session cookie
+│   ├── voters/route.ts                    # POST voter login + set voter session cookie
 │   ├── candidates/route.ts                # GET list, POST create (admin)
 │   ├── elections/route.ts                 # GET ongoing elections
 │   ├── elections/[id]/results/route.ts    # GET results leaderboard (opt. constituency filter)
@@ -90,20 +90,18 @@ Run `election_voting_schema_v2.sql` in PostgreSQL. Expected objects:
 ### Public Routes (No Auth)
 
 #### `POST /api/voters`
-Register a new voter and establish a voter session (HTTP-only cookie `voter_session`).
+Log in an existing voter using their EPIC number and date of birth; this endpoint does not create voter records.
 
 ```json
 {
   "epicNumber": "ABC1234567",
-  "fullName": "John Doe",
-  "dob": "1990-05-15",
-  "constituencyId": 1
+  "dob": "1990-05-15"
 }
 ```
 
-Response: `{ "success": true, "voterId": 1 }` + sets `voter_session` cookie (8h, HttpOnly, Secure in prod, SameSite=Lax)
+Response: `{ "success": true }` + sets `voter_session` cookie (8h, HttpOnly, Secure in prod, SameSite=Lax)
 
-Errors: `400` invalid input, `409` duplicate epic_number, `500` server error
+Errors: `400` invalid input, `401` invalid voter credentials, `500` server error
 
 ---
 
@@ -146,7 +144,7 @@ Response: `[{ "election_id": 1, "constituency_id": 1, "constituency_name": "..."
 ---
 
 #### `POST /api/vote` **Critical Route**
-Cast a vote. Requires valid `voter_session` cookie (set on voter registration). Calls `cast_vote` stored procedure.
+Cast a vote. Requires valid `voter_session` cookie (set on voter login). Calls `cast_vote` stored procedure.
 
 ```json
 {
@@ -269,7 +267,7 @@ All fields optional except `electionId` and `description`.
 3. **Access**: Include cookie or `Authorization: Bearer <token>` on admin routes
 
 ### Voter
-1. **Register**: `POST /api/voters` → receives `voter_session` cookie
+1. **Login**: `POST /api/voters` with EPIC number and date of birth → receives `voter_session` cookie
 2. **Vote**: `POST /api/vote` with session cookie (automatic)
 3. **Session**: 8-hour JWT, role/audience=`voter`, subject=`voterId`
 
@@ -300,7 +298,7 @@ All fields optional except `electionId` and `description`.
 - [ ] `pnpm dev` starts without errors
 - [ ] Test `GET /api/elections` returns data
 - [ ] Admin setup → login → access `/api/admin/booths`
-- [ ] Register voter → vote → verify turnout & results
+- [ ] Log in seeded voter → vote → verify turnout & results
 - [ ] Duplicate vote returns `409`
 
 ---
@@ -335,10 +333,10 @@ curl -b cookies.txt -X POST "$BASE/api/candidates" \
   -H "Content-Type: application/json" \
   -d '{"fullName":"Candidate A","dob":"1980-01-01","partyId":1,"constituencyId":1}'
 
-# 5. Register voter (sets voter_session cookie)
+# 5. Log in a voter preloaded by the seed script (sets voter_session cookie)
 curl -X POST "$BASE/api/voters" \
   -H "Content-Type: application/json" \
-  -d '{"epicNumber":"EPIC123","fullName":"Voter One","dob":"1990-01-01","constituencyId":1}' \
+  -d '{"epicNumber":"DEMO0000001","dob":"1990-01-01"}' \
   -c voter_cookies.txt
 
 # 6. Cast vote (uses voter_session cookie)

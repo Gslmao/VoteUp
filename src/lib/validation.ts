@@ -1,10 +1,8 @@
 import { z } from 'zod';
 
-export const createVoterSchema = z.object({
+export const voterLoginSchema = z.object({
   epicNumber: z.string().min(1).max(20),
-  fullName: z.string().min(2).max(150),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  constituencyId: z.number().int().positive(),
 }).strict();
 
 export const createCandidateSchema = z.object({
@@ -40,7 +38,7 @@ export const createComplaintSchema = z.object({
   description: z.string().min(10).max(1000),
 }).strict();
 
-export type CreateVoterInput = z.infer<typeof createVoterSchema>;
+export type VoterLoginInput = z.infer<typeof voterLoginSchema>;
 export type CreateCandidateInput = z.infer<typeof createCandidateSchema>;
 export type CastVoteInput = z.infer<typeof castVoteSchema>;
 export type CreateBoothInput = z.infer<typeof createBoothSchema>;

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import bcrypt from 'bcrypt';
 
 const loginSchema = z.object({
-  epic: z.string().email(),
+  email: z.string().email(),
   password: z.string().min(1),
 });
 
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const token = await createToken({ adminId: admin.id, email: admin.email });
+    const token = await createToken({ role: 'admin', adminId: admin.id, email: admin.email });
 
     const response = NextResponse.json({ success: true });
     response.cookies.set('admin_token', token, {

@@ -17,13 +17,13 @@ The connection check lists the exact 15 base tables, reports the separate `admin
 
 ## Voter Session and Vote
 
-Registration establishes the current mock voter session cookie:
+Voter login establishes the mock voter session cookie. The account is preloaded by `sql/04_seed.sql`; this endpoint does not register voters.
 
 ```sh
 BASE=http://localhost:3000
 curl -i -c voter-cookies.txt -X POST "$BASE/api/voters" \
   -H 'Content-Type: application/json' \
-  -d '{"epicNumber":"TEST0000001","fullName":"Test Voter","dob":"1990-01-01","constituencyId":1}'
+  -d '{"epicNumber":"DEMO0000001","dob":"1990-01-01"}'
 ```
 
 Cast the vote without sending a voter ID:
@@ -36,7 +36,7 @@ curl -i -b voter-cookies.txt -X POST "$BASE/api/vote" \
 
 Repeat the same request with the same cookie. The first vote should return `200`; the second should return `409`. The procedure's primary-key conflict handling serializes concurrent duplicate attempts. After the requests, verify the test voter/election pair has one `has_voted` row, the corresponding election has one additional `vote_events` row, and the vote trigger added one audit row.
 
-For the race check, use a newly registered voter and issue two simultaneous identical requests using that voter's cookie; expect exactly one `200` and one `409`.
+For the race check, use another seeded voter who has not voted in that election and issue two simultaneous identical requests using that voter's cookie; expect exactly one `200` and one `409`.
 
 ## Election-Specific Turnout
 

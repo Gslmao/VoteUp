@@ -2,24 +2,26 @@ import { pool, query } from '../src/lib/db';
 
 const baseUrl = process.env.TEST_BASE_URL ?? 'http://localhost:3000';
 
-async function registerVoter(constituencyId: number) {
-  const epicNumber = `TEST${Date.now()}${Math.floor(Math.random() * 1000)}`;
+async function loginVoter(epicNumber: string, dob: string) {
   const response = await fetch(`${baseUrl}/api/voters`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       epicNumber,
-      fullName: 'Voting Integration Test',
-      dob: '1990-01-01',
-      constituencyId,
+      dob,
     }),
   });
-  if (!response.ok) throw new Error(`Voter registration returned ${response.status}`);
+  if (!response.ok) throw new Error(`Voter login returned ${response.status}`);
 
-  const payload = await response.json() as { voterId: number };
   const cookie = response.headers.get('set-cookie')?.split(';', 1)[0];
-  if (!cookie || !payload.voterId) throw new Error('Registration did not establish a voter session');
-  return { voterId: payload.voterId, cookie };
+  if (!cookie) throw new Error('Voter login did not establish a session');
+  const result = await query<{ voter_id: number }>(
+    'SELECT voter_id FROM voters WHERE epic_number = $1 AND dob = $2',
+    [epicNumber, dob]
+  );
+  const voter = result.rows[0];
+  if (!voter) throw new Error('The logged-in voter does not exist in the database');
+  return { voterId: voter.voter_id, cookie };
 }
 
 async function submitVote(cookie: string, vote: Record<string, number>) {
@@ -78,7 +80,7 @@ async function main() {
     throw new Error(`Expected seeded turnout to start at zero; received ${JSON.stringify(turnout)}`);
   }
 
-  const sequentialVoter = await registerVoter(selected.constituency_id);
+  const sequentialVoter = await loginVoter('DEMO0000001', '1990-01-01');
   const electionEventsBefore = await countRows(
     'SELECT COUNT(*)::INT AS count FROM vote_events WHERE election_id = $1',
     [vote.electionId]
@@ -116,7 +118,7 @@ async function main() {
     throw new Error(`Expected turnout to be one after the test vote; received ${JSON.stringify(turnoutAfter)}`);
   }
 
-  const raceVoter = await registerVoter(selected.constituency_id);
+  const raceVoter = await loginVoter('DEMO0000002', '1991-01-01');
   const raceEventsBefore = await countRows(
     'SELECT COUNT(*)::INT AS count FROM vote_events WHERE election_id = $1',
     [vote.electionId]

@@ -20,7 +20,9 @@ VALUES
     (2, CURRENT_DATE, 'ACCEPTED');
 
 INSERT INTO voters(epic_number, full_name, dob, constituency_id)
-VALUES ('DEMO0000001', 'Demo Voter', '1990-01-01', 1);
+VALUES
+    ('DEMO0000001', 'Demo Voter One', '1990-01-01', 1),
+    ('DEMO0000002', 'Demo Voter Two', '1991-01-01', 1);
 
 INSERT INTO elections(election_name, election_type, start_date, end_date, status)
 VALUES ('Demo Election', 'GENERAL', CURRENT_DATE, CURRENT_DATE + 1, 'ONGOING');
