@@ -3,6 +3,7 @@ import { getAdminByEmail } from '@/lib/procedures';
 import { createToken } from '@/lib/auth';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
+import { config, getSessionCookieOptions } from '@/lib/config';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -37,13 +38,7 @@ export async function POST(request: Request) {
     const token = await createToken({ role: 'admin', adminId: admin.id, email: admin.email });
 
     const response = NextResponse.json({ success: true });
-    response.cookies.set('admin_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 8, // 8 hours
-      path: '/',
-    });
+    response.cookies.set(config.auth.cookies.admin, token, getSessionCookieOptions());
 
     return response;
   } catch (err) {

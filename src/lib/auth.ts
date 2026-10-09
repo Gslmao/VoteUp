@@ -1,6 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose';
-
-const JWT_EXPIRY = '8h';
+import { config } from './config';
 
 export type TokenRole = 'admin' | 'voter';
 export type AdminTokenPayload = { role: 'admin'; adminId: number; email: string };
@@ -23,7 +22,7 @@ export async function createToken(payload: AdminTokenPayload | VoterTokenPayload
     .setAudience(payload.role)
     .setSubject(String(subject))
     .setIssuedAt()
-    .setExpirationTime(JWT_EXPIRY)
+    .setExpirationTime(config.auth.jwtExpiresIn)
     .sign(getJwtSecret());
 }
 
@@ -64,8 +63,8 @@ export async function getVoterIdFromSession(request: Request) {
   const token = request.headers.get('cookie')
     ?.split(';')
     .map((part) => part.trim())
-    .find((part) => part.startsWith('voter_session='))
-    ?.slice('voter_session='.length);
+    .find((part) => part.startsWith(`${config.auth.cookies.voter}=`))
+    ?.slice(config.auth.cookies.voter.length + 1);
   if (!token) return null;
 
   const payload = await verifyToken(token, 'voter');

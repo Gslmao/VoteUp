@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { verifyToken, getTokenFromHeader } from './auth';
+import { config } from './config';
 
 export async function requireAdmin(request: Request) {
   const authHeader = request.headers.get('authorization');
-  const cookieToken = request.headers.get('cookie')?.split('; ').find(c => c.startsWith('admin_token='))?.split('=')[1];
+  const cookieToken = request.headers.get('cookie')
+    ?.split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${config.auth.cookies.admin}=`))
+    ?.slice(config.auth.cookies.admin.length + 1);
   
   const token = getTokenFromHeader(authHeader) || cookieToken;
   

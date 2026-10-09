@@ -2,14 +2,13 @@ import { NextResponse } from 'next/server';
 import { createAdmin } from '@/lib/procedures';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
+import { config, getAdminSetupKey } from '@/lib/config';
 
 const setupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   setupKey: z.string(),
 });
-
-const SETUP_KEY = process.env.ADMIN_SETUP_KEY || 'change-me-in-production';
 
 export const runtime = 'nodejs';
 
@@ -25,11 +24,16 @@ export async function POST(request: Request) {
       );
     }
 
-    if (parsed.data.setupKey !== SETUP_KEY) {
+    const setupKey = getAdminSetupKey();
+    if (!setupKey) {
+      return NextResponse.json({ error: 'Admin setup is not configured' }, { status: 503 });
+    }
+
+    if (parsed.data.setupKey !== setupKey) {
       return NextResponse.json({ error: 'Invalid setup key' }, { status: 403 });
     }
 
-    const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+    const passwordHash = await bcrypt.hash(parsed.data.password, config.auth.bcryptRounds);
     
     const result = await createAdmin({
       email: parsed.data.email,
@@ -39,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ 
       success: true, 
       admin: result.rows[0],
-      message: 'Admin created. You can now login at /api/auth/login'
+      message: 'Admin created. You can now login at /api/admin/login'
     });
   } catch (err: unknown) {
     console.error('Admin setup error:', err);

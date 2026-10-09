@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getVoterByCredentials } from '@/lib/procedures';
 import { voterLoginSchema } from '@/lib/validation';
 import { createToken } from '@/lib/auth';
+import { config, getSessionCookieOptions } from '@/lib/config';
 
 export const runtime = 'nodejs';
 
@@ -25,13 +26,7 @@ export async function POST(request: Request) {
     const voterId = voter.voter_id;
     const token = await createToken({ role: 'voter', voterId });
     const response = NextResponse.json({ success: true });
-    response.cookies.set('voter_session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 8,
-      path: '/',
-    });
+    response.cookies.set(config.auth.cookies.voter, token, getSessionCookieOptions());
     return response;
   } catch (err: unknown) {
     console.error('Error logging in voter:', err);
