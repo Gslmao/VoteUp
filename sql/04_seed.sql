@@ -27,11 +27,5 @@ VALUES
 INSERT INTO elections(election_name, election_type, start_date, end_date, status)
 VALUES ('Demo Election', 'GENERAL', CURRENT_DATE, CURRENT_DATE + 1, 'ONGOING');
 
-INSERT INTO polling_booths(constituency_id, location, officer_name, capacity)
-VALUES (1, 'Central School', 'Demo Officer', 500);
-
-INSERT INTO evms(booth_id, serial_number, status)
-VALUES (1, 'DEMO-EVM-001', 'ACTIVE');
-
 INSERT INTO results(election_id, candidate_id, total_votes)
 VALUES (1, 1, 0), (1, 2, 0);

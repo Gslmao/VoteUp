@@ -60,34 +60,17 @@ CREATE TABLE elections (
     CHECK (end_date >= start_date)
 );
 
-CREATE TABLE polling_booths (
-    booth_id        SERIAL PRIMARY KEY,
-    constituency_id INT NOT NULL REFERENCES constituencies(constituency_id),
-    location        VARCHAR(200) NOT NULL,
-    officer_name    VARCHAR(150),
-    capacity        INT CHECK (capacity > 0)
-);
-
-CREATE TABLE evms (
-    evm_id          SERIAL PRIMARY KEY,
-    booth_id        INT NOT NULL REFERENCES polling_booths(booth_id),
-    serial_number   VARCHAR(50) NOT NULL UNIQUE,
-    status          VARCHAR(20) CHECK (status IN ('ACTIVE','FAULTY','RETIRED')) DEFAULT 'ACTIVE'
-);
-
 -- tracks WHO has voted, without ever linking to WHAT they voted for
 CREATE TABLE has_voted (
     voter_id        INT NOT NULL REFERENCES voters(voter_id),
     election_id     INT NOT NULL REFERENCES elections(election_id),
     voted_at        TIMESTAMP NOT NULL DEFAULT NOW(),
-    booth_id        INT NOT NULL REFERENCES polling_booths(booth_id),
     PRIMARY KEY (voter_id, election_id)   -- enforces one vote per voter per election
 );
 
 -- anonymous ballot: deliberately no FK back to voters/has_voted
 CREATE TABLE vote_events (
     vote_id         BIGSERIAL PRIMARY KEY,
-    evm_id          INT NOT NULL REFERENCES evms(evm_id),
     election_id     INT NOT NULL REFERENCES elections(election_id),
     candidate_id    INT NOT NULL REFERENCES candidates(candidate_id),
     cast_at         TIMESTAMP NOT NULL DEFAULT NOW()
@@ -105,7 +88,7 @@ CREATE TABLE results (
 CREATE TABLE complaints (
     complaint_id    SERIAL PRIMARY KEY,
     filed_by        VARCHAR(150),
-    booth_id        INT REFERENCES polling_booths(booth_id),
+    constituency_id INT REFERENCES constituencies(constituency_id),
     election_id     INT NOT NULL REFERENCES elections(election_id),
     description     TEXT NOT NULL,
     status          VARCHAR(20) CHECK (status IN ('OPEN','INVESTIGATING','RESOLVED','DISMISSED')) DEFAULT 'OPEN'
@@ -154,19 +137,20 @@ FOR EACH ROW EXECUTE FUNCTION fn_log_vote();
 -- STORED PROCEDURE: cast_vote (atomic, rejects double voting)
 -- ============================================================
 CREATE OR REPLACE PROCEDURE cast_vote(
-    p_voter_id INT, p_election_id INT, p_booth_id INT,
-    p_evm_id INT, p_candidate_id INT
+    p_voter_id INT, p_election_id INT, p_candidate_id INT
 ) LANGUAGE plpgsql AS $$
 BEGIN
-    INSERT INTO has_voted(voter_id, election_id, booth_id)
-    VALUES (p_voter_id, p_election_id, p_booth_id);   -- fails on PK if already voted
+    INSERT INTO has_voted(voter_id, election_id)
+    VALUES (p_voter_id, p_election_id)
+    ON CONFLICT DO NOTHING;
 
-    INSERT INTO vote_events(evm_id, election_id, candidate_id)
-    VALUES (p_evm_id, p_election_id, p_candidate_id);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Voter % has already voted in election %', p_voter_id, p_election_id;
+    END IF;
 
-    COMMIT;
-EXCEPTION WHEN unique_violation THEN
-    RAISE EXCEPTION 'Voter % has already voted in election %', p_voter_id, p_election_id;
+    INSERT INTO vote_events(election_id, candidate_id)
+    VALUES (p_election_id, p_candidate_id);
+
 END;
 $$;
 

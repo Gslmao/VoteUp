@@ -13,8 +13,6 @@ async function main() {
   'nominations',
   'voters',
   'elections',
-  'polling_booths',
-  'evms',
   'has_voted',
   'vote_events',
   'results',

@@ -46,30 +46,24 @@ async function main() {
   const fixture = await query<{
     election_id: number;
     constituency_id: number;
-    booth_id: number;
-    evm_id: number;
     candidate_id: number;
   }>(
-    `SELECT e.election_id, c.constituency_id, b.booth_id, ev.evm_id,
+    `SELECT e.election_id, c.constituency_id,
             MIN(ca.candidate_id) AS candidate_id
      FROM elections e
      JOIN constituencies c ON TRUE
-     JOIN polling_booths b ON b.constituency_id = c.constituency_id
-     JOIN evms ev ON ev.booth_id = b.booth_id AND ev.status = 'ACTIVE'
      JOIN candidates ca ON ca.constituency_id = c.constituency_id
      WHERE e.status = 'ONGOING'
-     GROUP BY e.election_id, c.constituency_id, b.booth_id, ev.evm_id
+     GROUP BY e.election_id, c.constituency_id
      HAVING COUNT(DISTINCT ca.candidate_id) >= 2
      ORDER BY e.election_id, c.constituency_id
      LIMIT 1`
   );
   const selected = fixture.rows[0];
-  if (!selected) throw new Error('Seed at least one ongoing election and two candidates with a booth/EVM in one constituency');
+  if (!selected) throw new Error('Seed one ongoing election and at least two candidates in a constituency');
 
   const vote = {
     electionId: selected.election_id,
-    boothId: selected.booth_id,
-    evmId: selected.evm_id,
     candidateId: selected.candidate_id,
   };
   const turnoutResponse = await fetch(

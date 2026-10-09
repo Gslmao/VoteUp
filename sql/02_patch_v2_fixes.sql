@@ -1,18 +1,17 @@
 CREATE OR REPLACE PROCEDURE cast_vote(
-    p_voter_id INT, p_election_id INT, p_booth_id INT,
-    p_evm_id INT, p_candidate_id INT
+    p_voter_id INT, p_election_id INT, p_candidate_id INT
 ) LANGUAGE plpgsql AS $$
 BEGIN
-    INSERT INTO has_voted(voter_id, election_id, booth_id)
-    VALUES (p_voter_id, p_election_id, p_booth_id)
+    INSERT INTO has_voted(voter_id, election_id)
+    VALUES (p_voter_id, p_election_id)
     ON CONFLICT DO NOTHING;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Voter % has already voted in election %', p_voter_id, p_election_id;
     END IF;
 
-    INSERT INTO vote_events(evm_id, election_id, candidate_id)
-    VALUES (p_evm_id, p_election_id, p_candidate_id);
+    INSERT INTO vote_events(election_id, candidate_id)
+    VALUES (p_election_id, p_candidate_id);
 END;
 $$;
 

@@ -3,15 +3,11 @@ import { query } from './db';
 export async function castVote(params: {
   voterId: number;
   electionId: number;
-  boothId: number;
-  evmId: number;
   candidateId: number;
 }) {
-  return query('CALL cast_vote($1, $2, $3, $4, $5)', [
+  return query('CALL cast_vote($1, $2, $3)', [
     params.voterId,
     params.electionId,
-    params.boothId,
-    params.evmId,
     params.candidateId,
   ]);
 }
@@ -86,41 +82,6 @@ export async function getVoterByCredentials(epicNumber: string, dob: string) {
   return result.rows[0] ?? null;
 }
 
-export async function getBooths() {
-  const result = await query('SELECT * FROM polling_booths ORDER BY booth_id');
-  return { rows: result.rows };
-}
-
-export async function createBooth(data: {
-  location: string;
-  constituencyId: number;
-  officerName?: string | null;
-  capacity?: number | null;
-}) {
-  const result = await query(
-    `INSERT INTO polling_booths(constituency_id, location, officer_name, capacity)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [data.constituencyId, data.location, data.officerName ?? null, data.capacity ?? null]
-  );
-  return { rows: result.rows };
-}
-
-export async function getEVMs() {
-  const result = await query('SELECT * FROM evms ORDER BY evm_id');
-  return { rows: result.rows };
-}
-
-export async function createEVM(data: {
-  serialNumber: string;
-  boothId: number;
-}) {
-  const result = await query(
-    'INSERT INTO evms(serial_number, booth_id) VALUES ($1, $2) RETURNING *',
-    [data.serialNumber, data.boothId]
-  );
-  return { rows: result.rows };
-}
-
 export async function getComplaints() {
   const result = await query('SELECT * FROM complaints ORDER BY complaint_id DESC');
   return { rows: result.rows };
@@ -128,17 +89,17 @@ export async function getComplaints() {
 
 export async function createComplaint(data: {
   voterId: number;
-  boothId?: number;
+  constituencyId?: number;
   electionId: number;
   description: string;
 }) {
   const result = await query(
-    `INSERT INTO complaints(filed_by, booth_id, election_id, description)
+    `INSERT INTO complaints(filed_by, constituency_id, election_id, description)
      SELECT v.full_name, $2, $3, $4
      FROM voters v
      WHERE v.voter_id = $1
      RETURNING *`,
-    [data.voterId, data.boothId ?? null, data.electionId, data.description]
+    [data.voterId, data.constituencyId ?? null, data.electionId, data.description]
   );
   return { rows: result.rows };
 }

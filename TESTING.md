@@ -31,7 +31,7 @@ Cast the vote without sending a voter ID:
 ```sh
 curl -i -b voter-cookies.txt -X POST "$BASE/api/vote" \
   -H 'Content-Type: application/json' \
-  -d '{"electionId":1,"boothId":1,"evmId":1,"candidateId":1}'
+  -d '{"electionId":1,"candidateId":1}'
 ```
 
 Repeat the same request with the same cookie. The first vote should return `200`; the second should return `409`. The procedure's primary-key conflict handling serializes concurrent duplicate attempts. After the requests, verify the test voter/election pair has one `has_voted` row, the corresponding election has one additional `vote_events` row, and the vote trigger added one audit row.
@@ -45,7 +45,7 @@ With the voter session cookie from login, create a complaint through the voter A
 ```sh
 curl -i -b voter-cookies.txt -X POST "$BASE/api/complaints" \
   -H 'Content-Type: application/json' \
-  -d '{"electionId":1,"boothId":1,"description":"Polling booth equipment issue"}'
+  -d '{"electionId":1,"constituencyId":1,"description":"Online voting issue"}'
 ```
 
 The API records the authenticated voter's name as `filed_by`; callers cannot supply it. A fourth complaint from the same voter inside 15 minutes returns `429` with `Retry-After`. `GET /api/admin/complaints` remains admin-authenticated and read-only.
