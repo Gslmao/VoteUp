@@ -127,15 +127,18 @@ export async function getComplaints() {
 }
 
 export async function createComplaint(data: {
-  filedBy?: string;
+  voterId: number;
   boothId?: number;
   electionId: number;
   description: string;
 }) {
   const result = await query(
     `INSERT INTO complaints(filed_by, booth_id, election_id, description)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [data.filedBy ?? null, data.boothId ?? null, data.electionId, data.description]
+     SELECT v.full_name, $2, $3, $4
+     FROM voters v
+     WHERE v.voter_id = $1
+     RETURNING *`,
+    [data.voterId, data.boothId ?? null, data.electionId, data.description]
   );
   return { rows: result.rows };
 }

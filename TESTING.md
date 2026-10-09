@@ -38,6 +38,18 @@ Repeat the same request with the same cookie. The first vote should return `200`
 
 For the race check, use another seeded voter who has not voted in that election and issue two simultaneous identical requests using that voter's cookie; expect exactly one `200` and one `409`.
 
+## Voter Complaint
+
+With the voter session cookie from login, create a complaint through the voter API:
+
+```sh
+curl -i -b voter-cookies.txt -X POST "$BASE/api/complaints" \
+  -H 'Content-Type: application/json' \
+  -d '{"electionId":1,"boothId":1,"description":"Polling booth equipment issue"}'
+```
+
+The API records the authenticated voter's name as `filed_by`; callers cannot supply it. A fourth complaint from the same voter inside 15 minutes returns `429` with `Retry-After`. `GET /api/admin/complaints` remains admin-authenticated and read-only.
+
 ## Election-Specific Turnout
 
 Before any vote in the seeded election, this should return one row with `votes_cast: 0`; after one valid vote it should return `votes_cast: 1`:

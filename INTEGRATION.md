@@ -25,13 +25,14 @@ src/
 │   ├── elections/route.ts                 # GET ongoing elections
 │   ├── elections/[id]/results/route.ts    # GET results leaderboard (opt. constituency filter)
 │   ├── vote/route.ts                      # POST cast_vote (voter session required)
+│   ├── complaints/route.ts                # POST complaint (voter session + rate limit)
 │   ├── turnout/[constituencyId]/route.ts  # GET live turnout (requires electionId query)
 │   ├── auth/login/route.ts               # POST admin login → sets admin_token cookie
 │   └── admin/
 │       ├── setup/route.ts                 # POST create first admin (protected by ADMIN_SETUP_KEY)
 │       ├── booths/route.ts                # GET/POST polling booths (admin)
 │       ├── evms/route.ts                  # GET/POST EVMs (admin)
-│       └── complaints/route.ts            # GET/POST complaints (admin)
+│       └── complaints/route.ts            # GET complaints (admin)
 ├── lib/
 │   ├── db.ts                              # pg Pool + query helper (global singleton)
 │   ├── auth.ts                            # Shared JWT create/verify with role flag
@@ -243,19 +244,20 @@ Unique constraint on `serial_number` → `409` on duplicate.
 
 ---
 
-#### `GET/POST /api/admin/complaints`
-List (newest first) or file complaints.
+#### `POST /api/complaints` (Voter)
+File a complaint. Requires a voter session cookie; `filed_by` is taken from the authenticated voter record, not the request body. Limit: 3 complaints per voter per 15 minutes; limited responses return `429` with `Retry-After`.
 
 POST body:
 ```json
 {
-  "filedBy": "Voter Name",
   "boothId": 1,
   "electionId": 1,
   "description": "EVM display not working"
 }
 ```
-All fields optional except `electionId` and `description`.
+
+#### `GET /api/admin/complaints` (Admin)
+List complaints, newest first. Complaint listing remains admin-only.
 
 ---
 
@@ -285,7 +287,8 @@ All fields optional except `electionId` and `description`.
 
 5. **Role-flag JWTs** — Admin and voter tokens use the same signer, verifier, and secret; the `role` claim and matching audience prevent cross-use.
 
-6. **HttpOnly cookies** — Both admin and voter sessions use secure, HttpOnly cookies; tokens also accepted via Bearer header for API clients.
+6. **HttpOnly cookies** — Both admin and voter sessions use secure, HttpOnly cookies; admin tokens are also accepted via Bearer header.
+7. **Complaint rate limiting** — Voter complaint creation is limited per voter in the current Node.js process. Multi-instance deployments need a shared rate-limit store for a global limit.
 
 ---
 

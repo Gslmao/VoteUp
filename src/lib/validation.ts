@@ -31,8 +31,7 @@ export const createEVMSchema = z.object({
   boothId: z.number().int().positive(),
 }).strict();
 
-export const createComplaintSchema = z.object({
-  filedBy: z.string().max(150).optional(),
+export const voterComplaintSchema = z.object({
   boothId: z.number().int().positive().optional(),
   electionId: z.number().int().positive(),
   description: z.string().min(10).max(1000),
@@ -43,4 +42,4 @@ export type CreateCandidateInput = z.infer<typeof createCandidateSchema>;
 export type CastVoteInput = z.infer<typeof castVoteSchema>;
 export type CreateBoothInput = z.infer<typeof createBoothSchema>;
 export type CreateEVMInput = z.infer<typeof createEVMSchema>;
-export type CreateComplaintInput = z.infer<typeof createComplaintSchema>;
+export type VoterComplaintInput = z.infer<typeof voterComplaintSchema>;
