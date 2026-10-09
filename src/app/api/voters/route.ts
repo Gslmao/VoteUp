@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createVoter } from '@/lib/procedures';
 import { createVoterSchema } from '@/lib/validation';
-import { createVoterSession, VOTER_SESSION_COOKIE } from '@/lib/voterSession';
+import { createToken } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -19,9 +19,9 @@ export async function POST(request: Request) {
     
     const result = await createVoter(parsed.data);
     const voterId = result.rows[0].voter_id as number;
-    const token = await createVoterSession(voterId);
+    const token = await createToken({ role: 'voter', voterId });
     const response = NextResponse.json({ success: true, voterId });
-    response.cookies.set(VOTER_SESSION_COOKIE, token, {
+    response.cookies.set('voter_session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

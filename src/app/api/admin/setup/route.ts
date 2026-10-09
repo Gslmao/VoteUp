@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ 
       success: true, 
       admin: result.rows[0],
-      message: 'Admin created. You can now login at /api/admin/login' 
+      message: 'Admin created. You can now login at /api/auth/login'
     });
   } catch (err: unknown) {
     console.error('Admin setup error:', err);

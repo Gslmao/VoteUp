@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { castVote } from '@/lib/procedures';
 import { castVoteSchema } from '@/lib/validation';
-import { getVoterIdFromSession } from '@/lib/voterSession';
+import { getVoterIdFromSession } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 

@@ -26,17 +26,16 @@ src/
 │   ├── elections/[id]/results/route.ts    # GET results leaderboard (opt. constituency filter)
 │   ├── vote/route.ts                      # POST cast_vote (voter session required)
 │   ├── turnout/[constituencyId]/route.ts  # GET live turnout (requires electionId query)
+│   ├── auth/login/route.ts               # POST admin login → sets admin_token cookie
 │   └── admin/
 │       ├── setup/route.ts                 # POST create first admin (protected by ADMIN_SETUP_KEY)
-│       ├── login/route.ts                 # POST admin login → sets admin_token cookie
 │       ├── booths/route.ts                # GET/POST polling booths (admin)
 │       ├── evms/route.ts                  # GET/POST EVMs (admin)
 │       └── complaints/route.ts            # GET/POST complaints (admin)
 ├── lib/
 │   ├── db.ts                              # pg Pool + query helper (global singleton)
-│   ├── auth.ts                            # JWT create/verify (admin)
+│   ├── auth.ts                            # Shared JWT create/verify with role flag
 │   ├── adminAuth.ts                       # withAdminAuth wrapper (Bearer + cookie)
-│   ├── voterSession.ts                    # JWT create/verify (voter, audience='voter')
 │   ├── procedures.ts                      # Typed wrappers for stored procs & tables
 │   └── validation.ts                      # Zod schemas for all inputs
 ```
@@ -200,7 +199,7 @@ Errors: `400` invalid input, `403` invalid setup key, `409` email exists
 
 ---
 
-#### `POST /api/admin/login`
+#### `POST /api/auth/login`
 Admin login. Returns token in `admin_token` cookie (8h, HttpOnly, Secure in prod, SameSite=Lax).
 
 ```json
@@ -266,13 +265,13 @@ All fields optional except `electionId` and `description`.
 
 ### Admin
 1. **Setup** (once): `POST /api/admin/setup` with `ADMIN_SETUP_KEY`
-2. **Login**: `POST /api/admin/login` → receives `admin_token` cookie
+2. **Login**: `POST /api/auth/login` → receives `admin_token` cookie
 3. **Access**: Include cookie or `Authorization: Bearer <token>` on admin routes
 
 ### Voter
 1. **Register**: `POST /api/voters` → receives `voter_session` cookie
 2. **Vote**: `POST /api/vote` with session cookie (automatic)
-3. **Session**: 8-hour JWT, audience=`voter`, subject=`voterId`
+3. **Session**: 8-hour JWT, role/audience=`voter`, subject=`voterId`
 
 ---
 
@@ -286,7 +285,7 @@ All fields optional except `electionId` and `description`.
 
 4. **Thin API routes** — Routes validate → call procedure/view → return JSON. No business logic.
 
-5. **Dual JWT audiences** — Admin tokens (`audience` default) and voter tokens (`audience='voter'`) use same secret but different audiences to prevent cross-use.
+5. **Role-flag JWTs** — Admin and voter tokens use the same signer, verifier, and secret; the `role` claim and matching audience prevent cross-use.
 
 6. **HttpOnly cookies** — Both admin and voter sessions use secure, HttpOnly cookies; tokens also accepted via Bearer header for API clients.
 
@@ -317,7 +316,7 @@ curl -X POST "$BASE/api/admin/setup" \
   -d '{"email":"admin@example.com","password":"securepass123","setupKey":"your-secure-setup-key"}'
 
 # 2. Admin login
-curl -X POST "$BASE/api/api/admin/login" \
+curl -X POST "$BASE/api/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"securepass123"}' \
   -c cookies.txt
