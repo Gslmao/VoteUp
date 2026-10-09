@@ -1,47 +1,44 @@
 import { z } from 'zod';
 
 export const createVoterSchema = z.object({
-  name: z.string().min(2).max(100),
+  epicNumber: z.string().min(1).max(20),
+  fullName: z.string().min(2).max(150),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  address: z.string().min(5).max(255),
   constituencyId: z.number().int().positive(),
-  idDocumentType: z.enum(['AADHAAR', 'VOTER_ID', 'PASSPORT', 'DRIVING_LICENSE']),
-  idDocumentNumber: z.string().min(5).max(50),
-});
+}).strict();
 
 export const createCandidateSchema = z.object({
-  name: z.string().min(2).max(100),
-  party: z.string().min(2).max(100),
-  symbolUrl: z.string().url().optional().nullable(),
-  electionId: z.number().int().positive(),
+  fullName: z.string().min(2).max(150),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  partyId: z.number().int().positive().nullable().optional(),
   constituencyId: z.number().int().positive(),
-});
+}).strict();
 
 export const castVoteSchema = z.object({
-  voterId: z.number().int().positive(),
   electionId: z.number().int().positive(),
   boothId: z.number().int().positive(),
   evmId: z.number().int().positive(),
   candidateId: z.number().int().positive(),
-});
+}).strict();
 
 export const createBoothSchema = z.object({
-  name: z.string().min(2).max(100),
+  location: z.string().min(2).max(200),
   constituencyId: z.number().int().positive(),
-  address: z.string().min(5).max(255),
-});
+  officerName: z.string().max(150).nullable().optional(),
+  capacity: z.number().int().positive().nullable().optional(),
+}).strict();
 
 export const createEVMSchema = z.object({
   serialNumber: z.string().min(5).max(50),
   boothId: z.number().int().positive(),
-});
+}).strict();
 
 export const createComplaintSchema = z.object({
-  voterId: z.number().int().positive().optional(),
+  filedBy: z.string().max(150).optional(),
   boothId: z.number().int().positive().optional(),
-  electionId: z.number().int().positive().optional(),
+  electionId: z.number().int().positive(),
   description: z.string().min(10).max(1000),
-});
+}).strict();
 
 export type CreateVoterInput = z.infer<typeof createVoterSchema>;
 export type CreateCandidateInput = z.infer<typeof createCandidateSchema>;

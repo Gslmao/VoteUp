@@ -6,13 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:connection": "tsx scripts/test-connection.ts",
+    "test:voting": "tsx scripts/test-voting.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.2",
+    "@next/env": "16.3.8",
     "bcrypt": "^6.0.0",
     "jose": "^6.2.12",
     "next": "16.3.8",
+    "pg": "^8.16.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "^4.6.5"
@@ -20,13 +23,14 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/bcrypt": "^6.0.0",
-    "@types/bun": "^1.4.2",
     "@types/node": "^20",
+    "@types/pg": "^8.15.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   },
   "packageManager": "pnpm@10.33.1"

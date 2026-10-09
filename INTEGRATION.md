@@ -1,147 +1,234 @@
-# Election System Backend
+# Election System Backend — Full Functionality Report
 
-Next.js API routes + Supabase (PostgreSQL) backend for an election voting system. All business logic lives in PostgreSQL stored procedures/views; API routes are thin callers.
+Next.js 16 (App Router) + PostgreSQL backend for an election voting system. All business logic lives in PostgreSQL stored procedures/views; API routes are thin callers with Zod validation.
 
-## Quick Start
+## Stack
 
-```bash
-# 1. Install dependencies
-pnpm install
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 16.3.8 (App Router, TypeScript) |
+| Database | PostgreSQL (via `pg` pool) |
+| Auth | JWT (HS256) via `jose` — admin + voter sessions |
+| Password Hashing | `bcrypt` (cost 12) |
+| Validation | `zod` on every route |
+| Runtime | Node.js (`export const runtime = 'nodejs'`) |
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your Supabase project URL and anon key
-
-# 3. Set up Supabase project and run schema
-# In Supabase SQL editor, run election_voting_schema_v2.sql
-
-# 4. Seed reference data (constituencies, parties, etc.)
-
-# 5. Run dev server
-pnpm dev
-```
-
-Server runs at `http://localhost:3000`
+---
 
 ## Project Structure
 
 ```
 src/
 ├── app/api/
-│   ├── voters/route.ts              # POST - register voter
-│   ├── candidates/route.ts          # GET list, POST create (admin)
-│   ├── elections/route.ts           # GET ongoing elections
-│   ├── elections/[id]/results/route.ts  # GET results leaderboard
-│   ├── vote/route.ts                # POST cast_vote (critical)
-│   ├── turnout/[constituencyId]/route.ts  # GET live turnout
+│   ├── voters/route.ts                    # POST register voter + set voter session cookie
+│   ├── candidates/route.ts                # GET list, POST create (admin)
+│   ├── elections/route.ts                 # GET ongoing elections
+│   ├── elections/[id]/results/route.ts    # GET results leaderboard (opt. constituency filter)
+│   ├── vote/route.ts                      # POST cast_vote (voter session required)
+│   ├── turnout/[constituencyId]/route.ts  # GET live turnout (requires electionId query)
 │   └── admin/
-│       ├── booths/route.ts          # GET/POST polling booths
-│       ├── evms/route.ts            # GET/POST EVMs
-│       └── complaints/route.ts      # GET/POST complaints
+│       ├── setup/route.ts                 # POST create first admin (protected by ADMIN_SETUP_KEY)
+│       ├── login/route.ts                 # POST admin login → sets admin_token cookie
+│       ├── booths/route.ts                # GET/POST polling booths (admin)
+│       ├── evms/route.ts                  # GET/POST EVMs (admin)
+│       └── complaints/route.ts            # GET/POST complaints (admin)
 ├── lib/
-│   ├── db.ts                        # Supabase client
-│   ├── procedures.ts                # Typed wrappers for stored procs & tables
-│   └── validation.ts                # Zod schemas
+│   ├── db.ts                              # pg Pool + query helper (global singleton)
+│   ├── auth.ts                            # JWT create/verify (admin)
+│   ├── adminAuth.ts                       # withAdminAuth wrapper (Bearer + cookie)
+│   ├── voterSession.ts                    # JWT create/verify (voter, audience='voter')
+│   ├── procedures.ts                      # Typed wrappers for stored procs & tables
+│   └── validation.ts                      # Zod schemas for all inputs
 ```
+
+---
+
+## Environment Variables
+
+```bash
+# PostgreSQL
+DATABASE_URL=postgresql://postgres:password@localhost:5432/voting_dev
+
+# JWT Secret for admin & voter auth (generate: openssl rand -base64 32)
+JWT_SECRET=your-super-secret-jwt-key-min-32-chars
+
+# One-time setup key for creating first admin (change after use)
+ADMIN_SETUP_KEY=your-secure-setup-key
+```
+
+---
+
+## Database Objects Required
+
+Run `election_voting_schema_v2.sql` in PostgreSQL. Expected objects:
+
+### Tables
+| Table | Purpose |
+|-------|---------|
+| `voters` | Voter registry (epic_number, full_name, dob, constituency_id) |
+| `candidates` | Candidate master (full_name, dob, party_id, constituency_id, assets_declared_inr) |
+| `parties` | Political parties (party_name) |
+| `nominations` | Candidate ↔ election linkage (candidate_id, filed_date) |
+| `elections` | Election metadata (name, status, start_date, end_date) |
+| `constituencies` | Electoral boundaries (name) |
+| `polling_booths` | Physical booths (constituency_id, location, officer_name, capacity) |
+| `evms` | EVM machines (serial_number, booth_id) |
+| `votes` | Vote records (append-only, unique on voter_id + election_id) |
+| `complaints` | Voter complaints (filed_by, booth_id, election_id, description) |
+| `admins` | Admin users (email, password_hash) |
+
+### Stored Procedures
+- `cast_vote(p_voter_id, p_election_id, p_booth_id, p_evm_id, p_candidate_id)` — atomic vote casting with double-vote prevention via `EXCEPTION WHEN unique_violation`
+
+### Views
+- `view_live_turnout` — real-time turnout by constituency & election (columns: constituency_id, constituency_name, election_id, total_voters, votes_cast, turnout_percentage)
+- `view_results_leaderboard` — candidate vote counts per constituency (columns: election_id, constituency_id, constituency_name, candidate_id, full_name, party_name, vote_count, rank)
+
+---
 
 ## API Reference
 
-### Public Routes
+### Public Routes (No Auth)
 
 #### `POST /api/voters`
-Register a new voter.
+Register a new voter and establish a voter session (HTTP-only cookie `voter_session`).
 
 ```json
 {
-  "name": "John Doe",
-  "dob": "1990-01-15",
-  "address": "123 Main St, City",
-  "constituencyId": 1,
-  "idDocumentType": "AADHAAR",
-  "idDocumentNumber": "123456789012"
-}
-```
-
-Response: `{ "success": true, "voterId": 123 }`
-
-Errors: `400` invalid input, `409` duplicate ID document
-
----
-
-#### `GET /api/candidates?electionId=1`
-List candidates, optionally filtered by election.
-
-Response: `[{ "id": 1, "name": "...", "party": "...", "symbol_url": "...", "election_id": 1 }]`
-
----
-
-#### `POST /api/candidates` (Admin)
-Create candidate + nomination.
-
-```json
-{
-  "name": "Jane Smith",
-  "party": "Progressive Party",
-  "symbolUrl": "https://example.com/symbol.png",
-  "electionId": 1,
+  "epicNumber": "ABC1234567",
+  "fullName": "John Doe",
+  "dob": "1990-05-15",
   "constituencyId": 1
 }
 ```
 
+Response: `{ "success": true, "voterId": 1 }` + sets `voter_session` cookie (8h, HttpOnly, Secure in prod, SameSite=Lax)
+
+Errors: `400` invalid input, `409` duplicate epic_number, `500` server error
+
+---
+
+#### `GET /api/candidates?constituencyId=1`
+List candidates, optionally filtered by constituency. Returns party name via LEFT JOIN.
+
+Response: `[{ "candidate_id": 1, "full_name": "...", "dob": "...", "party_id": 1, "party_name": "...", "constituency_id": 1, "assets_declared_inr": null }]`
+
+---
+
+#### `POST /api/candidates` (Admin)
+Create candidate + nomination in a single transaction.
+
+```json
+{
+  "fullName": "Jane Smith",
+  "dob": "1985-03-20",
+  "partyId": 1,
+  "constituencyId": 1
+}
+```
+`partyId` is optional/nullable.
+
+Response: `{ "success": true, "candidate": { "candidate_id": 1, "full_name": "...", ... } }`
+
 ---
 
 #### `GET /api/elections`
-List ongoing elections.
+List ongoing elections (`status = 'ONGOING'`).
 
-Response: `[{ "id": 1, "name": "General Election 2024", "status": "ONGOING", ... }]`
+Response: `[{ "election_id": 1, "name": "General Election 2024", "status": "ONGOING", "start_date": "...", "end_date": "..." }]`
 
 ---
 
-#### `GET /api/elections/[id]/results`
-Get live results leaderboard for an election.
+#### `GET /api/elections/[id]/results?constituencyId=1`
+Get live results leaderboard for an election. Optional `constituencyId` filter.
 
-Response: `[{ "candidate_id": 1, "candidate_name": "...", "party": "...", "vote_count": 1234, "constituency_name": "..." }]`
+Response: `[{ "election_id": 1, "constituency_id": 1, "constituency_name": "...", "candidate_id": 1, "full_name": "...", "party_name": "...", "vote_count": 1234, "rank": 1 }]`
 
 ---
 
 #### `POST /api/vote` **Critical Route**
-Cast a vote. Calls `cast_vote` stored procedure via Supabase RPC.
+Cast a vote. Requires valid `voter_session` cookie (set on voter registration). Calls `cast_vote` stored procedure.
 
 ```json
 {
-  "voterId": 123,
   "electionId": 1,
-  "boothId": 5,
-  "evmId": 10,
-  "candidateId": 7
+  "boothId": 1,
+  "evmId": 1,
+  "candidateId": 1
 }
 ```
 
+`voterId` is extracted from the session cookie automatically.
+
 Response: `{ "success": true }`
 
-Errors: 
-- `400` invalid input / voter not eligible / invalid booth/EVM
-- `409` voter already voted in this election
+Errors:
+- `400` invalid input
+- `401` missing/invalid voter session
+- `409` voter already voted in this election (DB-level unique constraint)
 - `500` internal error
 
 ---
 
-#### `GET /api/turnout/[constituencyId]`
-Live turnout for a constituency.
+#### `GET /api/turnout/[constituencyId]?electionId=1`
+Live turnout for a constituency in a specific election. Requires `electionId` query param.
 
-Response: `[{ "constituency_id": 1, "constituency_name": "...", "total_voters": 50000, "votes_cast": 12345, "turnout_percentage": 24.69 }]`
+Response: `[{ "constituency_id": 1, "constituency_name": "...", "election_id": 1, "total_voters": 50000, "votes_cast": 12345, "turnout_percentage": 24.69 }]`
 
 ---
 
-### Admin Routes
+### Admin Routes (Require Admin Auth)
+
+All admin routes accept auth via:
+- `Authorization: Bearer <token>` header, OR
+- `admin_token` cookie (set on login)
+
+#### `POST /api/admin/setup` (One-time)
+Create the first admin user. Protected by `ADMIN_SETUP_KEY`.
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "securepass123",
+  "setupKey": "your-secure-setup-key"
+}
+```
+
+Response: `{ "success": true, "admin": { "id": 1, "email": "..." }, "message": "..." }`
+
+Errors: `400` invalid input, `403` invalid setup key, `409` email exists
+
+---
+
+#### `POST /api/admin/login`
+Admin login. Returns token in `admin_token` cookie (8h, HttpOnly, Secure in prod, SameSite=Lax).
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "securepass123"
+}
+```
+
+Response: `{ "success": true }` + sets cookie
+
+Errors: `400` invalid input, `401` invalid credentials
+
+---
 
 #### `GET/POST /api/admin/booths`
 List or create polling booths.
 
 POST body:
 ```json
-{ "name": "Booth 101", "constituencyId": 1, "address": "School Building, Ward 5" }
+{
+  "location": "Central School, Ward 5",
+  "constituencyId": 1,
+  "officerName": "Officer Name",
+  "capacity": 1000
+}
 ```
+`officerName` and `capacity` are optional/nullable.
 
 ---
 
@@ -150,119 +237,149 @@ List or register EVMs.
 
 POST body:
 ```json
-{ "serialNumber": "EVM-2024-00123", "boothId": 5 }
+{
+  "serialNumber": "EVM-2024-00123",
+  "boothId": 1
+}
 ```
+Unique constraint on `serial_number` → `409` on duplicate.
 
 ---
 
 #### `GET/POST /api/admin/complaints`
-List or file complaints.
+List (newest first) or file complaints.
 
 POST body:
 ```json
-{ 
-  "voterId": 123, 
-  "boothId": 5, 
-  "electionId": 1, 
-  "description": "EVM not working properly" 
+{
+  "filedBy": "Voter Name",
+  "boothId": 1,
+  "electionId": 1,
+  "description": "EVM display not working"
 }
 ```
+All fields optional except `electionId` and `description`.
 
-All fields optional except `description`.
+---
 
-## Database Schema Requirements
+## Authentication Flow
 
-The backend expects these PostgreSQL objects (from `election_voting_schema_v2.sql`) in your Supabase project:
+### Admin
+1. **Setup** (once): `POST /api/admin/setup` with `ADMIN_SETUP_KEY`
+2. **Login**: `POST /api/admin/login` → receives `admin_token` cookie
+3. **Access**: Include cookie or `Authorization: Bearer <token>` on admin routes
 
-### Tables
-- `voters` - voter registry
-- `candidates` - candidate master
-- `nominations` - candidate ↔ election ↔ constituency
-- `elections` - election metadata
-- `constituencies` - electoral boundaries
-- `polling_booths` - physical booths
-- `evms` - EVM machines linked to booths
-- `votes` - vote records (append-only)
-- `complaints` - voter complaints
-- `admins` - admin users (optional)
+### Voter
+1. **Register**: `POST /api/voters` → receives `voter_session` cookie
+2. **Vote**: `POST /api/vote` with session cookie (automatic)
+3. **Session**: 8-hour JWT, audience=`voter`, subject=`voterId`
 
-### Stored Procedures
-- `cast_vote(p_voter_id, p_election_id, p_booth_id, p_evm_id, p_candidate_id)` - atomic vote casting with double-vote prevention
-
-### Views
-- `view_live_turnout` - real-time turnout by constituency
-- `view_results_leaderboard` - candidate vote counts per constituency
-
-**Row Level Security (RLS)**: Enable RLS on all tables. For admin routes, use the `SUPABASE_SERVICE_ROLE_KEY` server-side to bypass RLS, or define policies that allow the required operations.
+---
 
 ## Key Architecture Decisions
 
-1. **All integrity in PostgreSQL** - `cast_vote` uses `EXCEPTION WHEN unique_violation` to prevent double-voting atomically. No application-level checks.
+1. **All integrity in PostgreSQL** — `cast_vote` uses `EXCEPTION WHEN unique_violation` for atomic double-vote prevention. No application-level checks.
 
-2. **Supabase client** - Single `supabase` instance in `lib/db.ts` reused across requests.
+2. **Single pooled connection** — `lib/db.ts` exports one `Pool` reused across requests (global singleton pattern).
 
-3. **Zod validation at API boundary** - Input validated before any DB call.
+3. **Zod validation at API boundary** — Every route validates input before any DB call.
 
-4. **Thin API routes** - Routes validate → call procedure/view → return JSON. No business logic.
+4. **Thin API routes** — Routes validate → call procedure/view → return JSON. No business logic.
 
-## Environment Variables
+5. **Dual JWT audiences** — Admin tokens (`audience` default) and voter tokens (`audience='voter'`) use same secret but different audiences to prevent cross-use.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SUPABASE_URL` | Yes | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Yes | Public anon key (client-safe) |
-| `SUPABASE_SERVICE_ROLE_KEY` | No | Service role key for admin routes (bypass RLS). Keep secret! |
+6. **HttpOnly cookies** — Both admin and voter sessions use secure, HttpOnly cookies; tokens also accepted via Bearer header for API clients.
+
+---
 
 ## Integration Checklist
 
-- [ ] Supabase project created
-- [ ] Schema applied (`election_voting_schema_v2.sql` in SQL editor)
-- [ ] Reference data seeded (constituencies, parties, elections)
-- [ ] RLS policies configured (or use service role key for admin routes)
-- [ ] `.env` configured with `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+- [ ] PostgreSQL 14+ running
+- [ ] Schema applied (`election_voting_schema_v2.sql`)
+- [ ] Reference data seeded (constituencies, parties, elections with `status='ONGOING'`)
+- [ ] `.env` configured with `DATABASE_URL`, `JWT_SECRET`, `ADMIN_SETUP_KEY`
 - [ ] `pnpm dev` starts without errors
 - [ ] Test `GET /api/elections` returns data
-- [ ] Test `POST /api/vote` with valid data succeeds
-- [ ] Test `POST /api/vote` duplicate returns 409
+- [ ] Admin setup → login → access `/api/admin/booths`
+- [ ] Register voter → vote → verify turnout & results
+- [ ] Duplicate vote returns `409`
+
+---
 
 ## Testing the Critical Path
 
 ```bash
-# 1. Register a voter
-curl -X POST http://localhost:3000/api/voters \
+BASE="http://localhost:3000"
+
+# 1. Admin setup (once)
+curl -X POST "$BASE/api/admin/setup" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Test Voter","dob":"1990-01-01","address":"123 Test St","constituencyId":1,"idDocumentType":"AADHAAR","idDocumentNumber":"111122223333"}'
+  -d '{"email":"admin@example.com","password":"securepass123","setupKey":"your-secure-setup-key"}'
 
-# 2. Cast vote (use returned voterId)
-curl -X POST http://localhost:3000/api/vote \
+# 2. Admin login
+curl -X POST "$BASE/api/api/admin/login" \
   -H "Content-Type: application/json" \
-  -d '{"voterId":1,"electionId":1,"boothId":1,"evmId":1,"candidateId":1}'
+  -d '{"email":"admin@example.com","password":"securepass123"}' \
+  -c cookies.txt
 
-# 3. Verify turnout updates
-curl http://localhost:3000/api/turnout/1
-
-# 4. Verify results
-curl http://localhost:3000/api/elections/1/results
-
-# 5. Try duplicate vote → should get 409
-curl -X POST http://localhost:3000/api/vote \
+# 3. Create booth & EVM
+curl -b cookies.txt -X POST "$BASE/api/admin/booths" \
   -H "Content-Type: application/json" \
-  -d '{"voterId":1,"electionId":1,"boothId":1,"evmId":1,"candidateId":1}'
+  -d '{"location":"School","constituencyId":1}'
+
+curl -b cookies.txt -X POST "$BASE/api/admin/evms" \
+  -H "Content-Type: application/json" \
+  -d '{"serialNumber":"EVM-001","boothId":1}'
+
+# 4. Create candidate
+curl -b cookies.txt -X POST "$BASE/api/candidates" \
+  -H "Content-Type: application/json" \
+  -d '{"fullName":"Candidate A","dob":"1980-01-01","partyId":1,"constituencyId":1}'
+
+# 5. Register voter (sets voter_session cookie)
+curl -X POST "$BASE/api/voters" \
+  -H "Content-Type: application/json" \
+  -d '{"epicNumber":"EPIC123","fullName":"Voter One","dob":"1990-01-01","constituencyId":1}' \
+  -c voter_cookies.txt
+
+# 6. Cast vote (uses voter_session cookie)
+curl -b voter_cookies.txt -X POST "$BASE/api/vote" \
+  -H "Content-Type: application/json" \
+  -d '{"electionId":1,"boothId":1,"evmId":1,"candidateId":1}'
+
+# 7. Verify turnout
+curl "$BASE/api/turnout/1?electionId=1"
+
+# 8. Verify results
+curl "$BASE/api/elections/1/results"
+
+# 9. Duplicate vote → 409
+curl -b voter_cookies.txt -X POST "$BASE/api/vote" \
+  -H "Content-Type: application/json" \
+  -d '{"electionId":1,"boothId":1,"evmId":1,"candidateId":1}'
 ```
+
+---
+
+## Available Scripts
+
+```bash
+pnpm dev              # Start dev server (port 3000)
+pnpm build            # Production build + typecheck
+pnpm start            # Run production build
+pnpm lint             # ESLint
+pnpm test:connection  # Test DB connection (tsx scripts/test-connection.ts)
+pnpm test:voting      # Run voting flow test (tsx scripts/test-voting.ts)
+```
+
+---
 
 ## Extending
 
-Add new admin routes in `src/app/api/admin/` following the same pattern:
-1. Add procedure wrapper in `lib/procedures.ts` using Supabase client
-2. Add Zod schema in `lib/validation.ts`
-3. Create route file with GET/POST handlers
+Add new routes following the same pattern:
+1. Add Zod schema in `lib/validation.ts`
+2. Add procedure wrapper in `lib/procedures.ts`
+3. Create route file in `app/api/...`
+4. Use `withAdminAuth` for admin routes, voter session for voter routes
 
-Add new public routes in `src/app/api/` similarly.
-
-## Supabase Notes
-
-- Use the **anon key** for public routes (voting, results, turnout). RLS policies should allow reads/writes as needed.
-- For admin routes (booths, EVMs, complaints), either:
-  - Use the **service role key** server-side (create a separate Supabase client with it), or
-  - Define RLS policies that allow authenticated admin users.
-- Realtime: You can subscribe to `view_live_turnout` or `votes` table changes via Supabase Realtime for live UI updates without polling.
+For new admin entities: add CRUD in `procedures.ts`, schema in `validation.ts`, route with `withAdminAuth`.

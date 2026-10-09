@@ -5,7 +5,7 @@ import { z } from 'zod';
 import bcrypt from 'bcrypt';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  epic: z.string().email(),
   password: z.string().min(1),
 });
 
