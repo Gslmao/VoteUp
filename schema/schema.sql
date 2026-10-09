@@ -123,6 +123,11 @@ CREATE INDEX idx_candidates_constituency ON candidates(constituency_id);
 CREATE OR REPLACE FUNCTION fn_log_vote()
 RETURNS TRIGGER AS $$
 BEGIN
+    INSERT INTO results(election_id, candidate_id, total_votes)
+    VALUES (NEW.election_id, NEW.candidate_id, 1)
+    ON CONFLICT (election_id, candidate_id)
+    DO UPDATE SET total_votes = results.total_votes + 1;
+
     INSERT INTO audit_log(table_name, operation, row_id, details)
     VALUES ('vote_events', 'INSERT', NEW.vote_id, jsonb_build_object('election_id', NEW.election_id));
     RETURN NEW;

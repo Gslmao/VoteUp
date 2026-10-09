@@ -83,6 +83,10 @@ async function main() {
     `SELECT COUNT(*)::INT AS count FROM audit_log WHERE details->>'election_id' = $1`,
     [String(vote.electionId)]
   );
+  const resultVotesBefore = await countRows(
+    'SELECT total_votes::INT AS count FROM results WHERE election_id = $1 AND candidate_id = $2',
+    [vote.electionId, vote.candidateId]
+  );
 
   const first = await submitVote(sequentialVoter.cookie, vote);
   const duplicate = await submitVote(sequentialVoter.cookie, vote);
@@ -101,8 +105,12 @@ async function main() {
     `SELECT COUNT(*)::INT AS count FROM audit_log WHERE details->>'election_id' = $1`,
     [String(vote.electionId)]
   );
-  if (participationRows !== 1 || electionEventsAfter !== electionEventsBefore + 1 || electionAuditsAfter !== electionAuditsBefore + 1) {
-    throw new Error('Sequential duplicate test produced unexpected has_voted, vote_events, or audit_log counts');
+  const resultVotesAfter = await countRows(
+    'SELECT total_votes::INT AS count FROM results WHERE election_id = $1 AND candidate_id = $2',
+    [vote.electionId, vote.candidateId]
+  );
+  if (participationRows !== 1 || electionEventsAfter !== electionEventsBefore + 1 || electionAuditsAfter !== electionAuditsBefore + 1 || resultVotesAfter !== resultVotesBefore + 1) {
+    throw new Error('Sequential duplicate test produced unexpected participation, ballot, audit, or results counts');
   }
 
   const turnoutAfter = await fetch(
@@ -120,6 +128,10 @@ async function main() {
   const raceAuditsBefore = await countRows(
     `SELECT COUNT(*)::INT AS count FROM audit_log WHERE details->>'election_id' = $1`,
     [String(vote.electionId)]
+  );
+  const raceResultVotesBefore = await countRows(
+    'SELECT total_votes::INT AS count FROM results WHERE election_id = $1 AND candidate_id = $2',
+    [vote.electionId, vote.candidateId]
   );
   const raceResponses = await Promise.all([
     submitVote(raceVoter.cookie, vote),
@@ -142,8 +154,12 @@ async function main() {
     `SELECT COUNT(*)::INT AS count FROM audit_log WHERE details->>'election_id' = $1`,
     [String(vote.electionId)]
   );
-  if (raceParticipationRows !== 1 || raceEventsAfter !== raceEventsBefore + 1 || raceAuditsAfter !== raceAuditsBefore + 1) {
-    throw new Error('Concurrent duplicate test produced unexpected has_voted, vote_events, or audit_log counts');
+  const raceResultVotesAfter = await countRows(
+    'SELECT total_votes::INT AS count FROM results WHERE election_id = $1 AND candidate_id = $2',
+    [vote.electionId, vote.candidateId]
+  );
+  if (raceParticipationRows !== 1 || raceEventsAfter !== raceEventsBefore + 1 || raceAuditsAfter !== raceAuditsBefore + 1 || raceResultVotesAfter !== raceResultVotesBefore + 1) {
+    throw new Error('Concurrent duplicate test produced unexpected participation, ballot, audit, or results counts');
   }
 
   console.log('Sequential duplicate: 200, 409; one participation, ballot, and audit row.');
