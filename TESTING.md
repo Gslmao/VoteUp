@@ -11,17 +11,18 @@
 ```sh
 npx tsc --noEmit
 npx tsx scripts/test-connection.ts
+pnpm test:voting
 ```
 
-The connection check lists the exact 15 base tables, reports the separate `admins` auth table when present, and verifies `cast_vote`.
+The connection check lists the v2 base tables, reports the separate `admins` auth table, and verifies `cast_vote`. Keep the application running for `pnpm test:voting`; it creates uniquely named voter/election fixtures, checks invalid candidate, sequential duplicate, concurrent duplicate, turnout, audit, and results behavior, then removes its test rows. It refuses database names that do not contain `dev` or `test`.
 
 ## Voter Session and Vote
 
-Voter login establishes the mock voter session cookie. The account is preloaded by `sql/04_seed.sql`; this endpoint does not register voters.
+Voter login establishes the mock voter session cookie. The endpoint authenticates an existing voter and does not register voters.
 
 ```sh
 BASE=http://localhost:3000
-curl -i -c voter-cookies.txt -X POST "$BASE/api/voters" \
+curl -i -c voter-cookies.txt -X POST "$BASE/api/auth/login" \
   -H 'Content-Type: application/json' \
   -d '{"epicNumber":"DEMO0000001","dob":"1990-01-01"}'
 ```
@@ -34,9 +35,7 @@ curl -i -b voter-cookies.txt -X POST "$BASE/api/vote" \
   -d '{"electionId":1,"candidateId":1}'
 ```
 
-Repeat the same request with the same cookie. The first vote should return `200`; the second should return `409`. The procedure's primary-key conflict handling serializes concurrent duplicate attempts. After the requests, verify the test voter/election pair has one `has_voted` row, the corresponding election has one additional `vote_events` row, and the vote trigger added one audit row.
-
-For the race check, use another seeded voter who has not voted in that election and issue two simultaneous identical requests using that voter's cookie; expect exactly one `200` and one `409`.
+The automated voting test performs the duplicate and race requests using fresh isolated fixtures, so it can be run repeatedly without depending on seeded voter state.
 
 ## Voter Complaint
 
