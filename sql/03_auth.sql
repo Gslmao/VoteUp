@@ -4,3 +4,5 @@ CREATE TABLE admins (
     password_hash   TEXT NOT NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX admins_singleton_idx ON admins ((TRUE));

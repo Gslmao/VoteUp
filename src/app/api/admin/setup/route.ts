@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     console.error('Admin setup error:', err);
     if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
       return NextResponse.json(
-        { error: 'Admin with this email already exists' },
+        { error: 'Admin setup is already initialized' },
         { status: 409 }
       );
     }
