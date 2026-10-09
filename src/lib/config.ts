@@ -5,6 +5,10 @@ export const config = {
     jwtExpiresIn: `${sessionLifetimeSeconds}s`,
     sessionLifetimeSeconds,
     bcryptRounds: 12,
+    voterLoginRateLimit: {
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
+    },
     cookies: {
       admin: 'admin_token',
       voter: 'voter_session',

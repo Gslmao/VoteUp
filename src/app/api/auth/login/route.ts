@@ -3,6 +3,7 @@ import { getVoterByCredentials } from '@/lib/procedures';
 import { voterLoginSchema } from '@/lib/validation';
 import { createToken } from '@/lib/auth';
 import { config, getSessionCookieOptions } from '@/lib/config';
+import { consumeVoterLoginRateLimit } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Invalid input', details: parsed.error.flatten() },
         { status: 400 }
+      );
+    }
+
+    const rateLimit = consumeVoterLoginRateLimit(parsed.data.epicNumber);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many login attempts' },
+        { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) } }
       );
     }
     

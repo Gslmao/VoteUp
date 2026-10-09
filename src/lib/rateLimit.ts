@@ -5,23 +5,23 @@ type RateLimitEntry = {
   resetAt: number;
 };
 
-const complaintAttempts = new Map<number, RateLimitEntry>();
+const attempts = new Map<string, RateLimitEntry>();
 
-export function consumeComplaintRateLimit(voterId: number, now = Date.now()) {
-  for (const [key, entry] of complaintAttempts) {
-    if (entry.resetAt <= now) complaintAttempts.delete(key);
+function consumeRateLimit(key: string, limit: number, windowMs: number, now: number) {
+  for (const [entryKey, entry] of attempts) {
+    if (entry.resetAt <= now) attempts.delete(entryKey);
   }
 
-  const current = complaintAttempts.get(voterId);
+  const current = attempts.get(key);
   if (!current || current.resetAt <= now) {
-    complaintAttempts.set(voterId, {
+    attempts.set(key, {
       count: 1,
-      resetAt: now + config.complaints.rateLimit.windowMs,
+      resetAt: now + windowMs,
     });
     return { allowed: true, retryAfterSeconds: 0 };
   }
 
-  if (current.count >= config.complaints.rateLimit.limit) {
+  if (current.count >= limit) {
     return {
       allowed: false,
       retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000)),
@@ -30,4 +30,22 @@ export function consumeComplaintRateLimit(voterId: number, now = Date.now()) {
 
   current.count += 1;
   return { allowed: true, retryAfterSeconds: 0 };
+}
+
+export function consumeComplaintRateLimit(voterId: number, now = Date.now()) {
+  return consumeRateLimit(
+    `complaint:${voterId}`,
+    config.complaints.rateLimit.limit,
+    config.complaints.rateLimit.windowMs,
+    now
+  );
+}
+
+export function consumeVoterLoginRateLimit(epicNumber: string, now = Date.now()) {
+  return consumeRateLimit(
+    `voter-login:${epicNumber.trim().toUpperCase()}`,
+    config.auth.voterLoginRateLimit.limit,
+    config.auth.voterLoginRateLimit.windowMs,
+    now
+  );
 }
