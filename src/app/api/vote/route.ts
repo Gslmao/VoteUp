@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { castVote } from '@/lib/procedures';
 import { castVoteSchema } from '@/lib/validation';
+import { getVoterIdFromSession } from '@/lib/voterSession';
+
+export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
@@ -13,26 +16,23 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    
-    await castVote(parsed.data);
+
+    const voterId = await getVoterIdFromSession(request);
+    if (!voterId) {
+      return NextResponse.json({ error: 'Voter session required' }, { status: 401 });
+    }
+
+    await castVote({ ...parsed.data, voterId });
     return NextResponse.json({ success: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error casting vote:', err);
-    
-    if (err.message?.includes('already voted') || err.code === '23505') {
+    const message = err instanceof Error ? err.message : '';
+    if (message.includes('already voted')) {
       return NextResponse.json(
         { error: 'Voter has already voted in this election' },
         { status: 409 }
       );
     }
-    
-    if (err.message?.includes('invalid') || err.message?.includes('not found')) {
-      return NextResponse.json(
-        { error: err.message },
-        { status: 400 }
-      );
-    }
-    
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

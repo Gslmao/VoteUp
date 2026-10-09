@@ -3,6 +3,8 @@ import { getBooths, createBooth } from '@/lib/procedures';
 import { createBoothSchema } from '@/lib/validation';
 import { withAdminAuth } from '@/lib/adminAuth';
 
+export const runtime = 'nodejs';
+
 async function getHandler() {
   try {
     const result = await getBooths();
@@ -27,7 +29,7 @@ async function postHandler(request: Request) {
     
     const result = await createBooth(parsed.data);
     return NextResponse.json({ success: true, booth: result.rows[0] });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error creating booth:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

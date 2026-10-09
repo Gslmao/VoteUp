@@ -11,6 +11,8 @@ const setupSchema = z.object({
 
 const SETUP_KEY = process.env.ADMIN_SETUP_KEY || 'change-me-in-production';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -39,9 +41,9 @@ export async function POST(request: Request) {
       admin: result.rows[0],
       message: 'Admin created. You can now login at /api/admin/login' 
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Admin setup error:', err);
-    if (err.code === '23505') {
+    if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
       return NextResponse.json(
         { error: 'Admin with this email already exists' },
         { status: 409 }

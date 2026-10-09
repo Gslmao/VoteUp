@@ -3,6 +3,8 @@ import { getEVMs, createEVM } from '@/lib/procedures';
 import { createEVMSchema } from '@/lib/validation';
 import { withAdminAuth } from '@/lib/adminAuth';
 
+export const runtime = 'nodejs';
+
 async function getHandler() {
   try {
     const result = await getEVMs();
@@ -27,9 +29,9 @@ async function postHandler(request: Request) {
     
     const result = await createEVM(parsed.data);
     return NextResponse.json({ success: true, evm: result.rows[0] });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error creating EVM:', err);
-    if (err.code === '23505') {
+    if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
       return NextResponse.json(
         { error: 'EVM with this serial number already exists' },
         { status: 409 }

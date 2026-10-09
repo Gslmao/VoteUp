@@ -3,6 +3,8 @@ import { getComplaints, createComplaint } from '@/lib/procedures';
 import { createComplaintSchema } from '@/lib/validation';
 import { withAdminAuth } from '@/lib/adminAuth';
 
+export const runtime = 'nodejs';
+
 async function getHandler() {
   try {
     const result = await getComplaints();
@@ -27,7 +29,7 @@ async function postHandler(request: Request) {
     
     const result = await createComplaint(parsed.data);
     return NextResponse.json({ success: true, complaint: result.rows[0] });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error creating complaint:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

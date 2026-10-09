@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getElectionResults } from '@/lib/procedures';
+import { getResultsLeaderboard } from '@/lib/procedures';
+
+export const runtime = 'nodejs';
 
 export async function GET(
   request: Request,
@@ -9,11 +11,17 @@ export async function GET(
     const { id } = await params;
     const electionId = Number(id);
     
-    if (isNaN(electionId)) {
+    if (!Number.isInteger(electionId) || electionId < 1) {
       return NextResponse.json({ error: 'Invalid election ID' }, { status: 400 });
     }
     
-    const result = await getElectionResults(electionId);
+    const constituencyParam = new URL(request.url).searchParams.get('constituencyId');
+    const constituencyId = constituencyParam === null ? undefined : Number(constituencyParam);
+    if (constituencyId !== undefined && (!Number.isInteger(constituencyId) || constituencyId < 1)) {
+      return NextResponse.json({ error: 'Invalid constituency ID' }, { status: 400 });
+    }
+
+    const result = await getResultsLeaderboard(electionId, constituencyId);
     return NextResponse.json(result.rows);
   } catch (err) {
     console.error('Error fetching election results:', err);

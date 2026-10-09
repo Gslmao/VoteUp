@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getElections } from '@/lib/procedures';
 
+export const runtime = 'nodejs';
+
 export async function GET() {
   try {
     const result = await getElections('ONGOING');
