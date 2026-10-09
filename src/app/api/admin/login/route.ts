@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAdminByEmail } from '@/lib/procedures';
 import { createToken } from '@/lib/auth';
 import { z } from 'zod';
+import bcrypt from 'bcrypt';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const isValid = await Bun.password.verify(parsed.data.password, admin.password_hash);
+    const isValid = await bcrypt.compare(parsed.data.password, admin.password_hash);
     if (!isValid) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }

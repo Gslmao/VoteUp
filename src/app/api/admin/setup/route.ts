@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdmin } from '@/lib/procedures';
 import { z } from 'zod';
+import bcrypt from 'bcrypt';
 
 const setupSchema = z.object({
   email: z.string().email(),
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid setup key' }, { status: 403 });
     }
 
-    const passwordHash = await Bun.password.hash(parsed.data.password);
+    const passwordHash = await bcrypt.hash(parsed.data.password, 12);
     
     const result = await createAdmin({
       email: parsed.data.email,
