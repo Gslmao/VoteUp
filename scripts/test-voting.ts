@@ -75,6 +75,14 @@ async function main() {
   }
 
   const sequentialVoter = await loginVoter('DEMO0000001', '1990-01-01');
+  const unregisteredCandidate = await submitVote(sequentialVoter.cookie, {
+    electionId: vote.electionId,
+    candidateId: 2147483647,
+  });
+  if (unregisteredCandidate.status !== 400) {
+    throw new Error(`Unregistered candidate vote returned ${unregisteredCandidate.status}; expected 400`);
+  }
+
   const electionEventsBefore = await countRows(
     'SELECT COUNT(*)::INT AS count FROM vote_events WHERE election_id = $1',
     [vote.electionId]

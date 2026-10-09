@@ -56,6 +56,7 @@ export async function createCandidate(data: {
   dob: string;
   partyId?: number | null;
   constituencyId: number;
+  electionId: number;
 }) {
   const result = await query(
     `WITH new_candidate AS (
@@ -66,10 +67,15 @@ export async function createCandidate(data: {
        INSERT INTO nominations(candidate_id, filed_date)
        SELECT candidate_id, CURRENT_DATE FROM new_candidate
        RETURNING candidate_id
+     ), new_result AS (
+       INSERT INTO results(election_id, candidate_id, total_votes)
+       SELECT $5, candidate_id, 0 FROM new_candidate
+       RETURNING candidate_id
      )
      SELECT new_candidate.* FROM new_candidate
-     JOIN new_nomination USING (candidate_id)`,
-    [data.fullName, data.dob, data.partyId ?? null, data.constituencyId]
+     JOIN new_nomination USING (candidate_id)
+     JOIN new_result USING (candidate_id)`,
+    [data.fullName, data.dob, data.partyId ?? null, data.constituencyId, data.electionId]
   );
   return result.rows[0];
 }

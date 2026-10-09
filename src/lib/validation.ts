@@ -10,6 +10,7 @@ export const createCandidateSchema = z.object({
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   partyId: z.number().int().positive().nullable().optional(),
   constituencyId: z.number().int().positive(),
+  electionId: z.number().int().positive(),
 }).strict();
 
 export const castVoteSchema = z.object({

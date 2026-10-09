@@ -33,6 +33,13 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
+    if (
+      message.includes('Voter not found') ||
+      message.includes('Election is not open') ||
+      message.includes('Candidate is not registered')
+    ) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
