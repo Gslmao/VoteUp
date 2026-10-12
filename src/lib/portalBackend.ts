@@ -5,6 +5,7 @@ import type {
   Election,
   Party,
   Result,
+  Voter,
 } from '@/types/portal';
 
 type ApiElection = {
@@ -51,6 +52,15 @@ type ApiComplaint = {
 type ApiTurnout = {
   votes_cast: number | string;
   total_registered_voters: number | string | null;
+};
+
+export type ApiVoter = {
+  voter_id: number;
+  epic_number: string;
+  full_name: string;
+  dob: string;
+  constituency_id: number;
+  has_voted: boolean | null;
 };
 
 const electionTypeLabels: Record<string, string> = {
@@ -142,11 +152,19 @@ export async function loadAdminPortalData() {
     status: complaint.status,
   }));
 
-  const turnoutRows = elections.length
-    ? await getApiJson<ApiTurnout[]>(
-        `/api/elections/${encodeURIComponent(elections[0].id)}/turnout`
-      )
-    : [];
+  const activeElectionId = elections[0]?.id;
+  const voterPath = activeElectionId
+    ? `/api/admin/voters?electionId=${encodeURIComponent(activeElectionId)}`
+    : '/api/admin/voters';
+  const [apiVoters, turnoutRows] = await Promise.all([
+    getApiJson<ApiVoter[]>(voterPath),
+    activeElectionId
+      ? getApiJson<ApiTurnout[]>(
+          `/api/elections/${encodeURIComponent(activeElectionId)}/turnout`
+        )
+      : Promise.resolve([]),
+  ]);
+  const voters = mapApiVoters(apiVoters, constituencyNames);
   const votesCast = turnoutRows.reduce(
     (sum, row) => sum + Number(row.votes_cast),
     0
@@ -165,7 +183,27 @@ export async function loadAdminPortalData() {
         }
       : null;
 
-  return { elections, parties, constituencies, candidates, complaints, turnout };
+  return { elections, parties, constituencies, candidates, complaints, voters, turnout };
+}
+
+export function mapApiVoters(
+  records: ApiVoter[],
+  constituencyNames: Map<number, string>
+): Voter[] {
+  return records.map((voter) => ({
+    id: String(voter.voter_id),
+    epic: voter.epic_number,
+    name: voter.full_name,
+    constituency:
+      constituencyNames.get(voter.constituency_id) ?? 'Unknown constituency',
+    dob: voter.dob,
+    participation:
+      voter.has_voted === null
+        ? 'Unavailable'
+        : voter.has_voted
+          ? 'Recorded'
+          : 'Not recorded',
+  }));
 }
 
 export type ApiResult = {

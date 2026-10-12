@@ -45,7 +45,7 @@ export type Voter = {
   name: string;
   constituency: string;
   dob: string;
-  participation: "Recorded" | "Not recorded";
+  participation: "Recorded" | "Not recorded" | "Unavailable";
 };
 
 export type Complaint = {

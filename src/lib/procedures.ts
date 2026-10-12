@@ -126,6 +126,93 @@ export async function getVoterByCredentials(epicNumber: string, dob: string) {
   return data;
 }
 
+export async function getAdminVoters(electionId?: number) {
+  const supabase = getSupabaseClient();
+  const voters: {
+    voter_id: number;
+    epic_number: string;
+    full_name: string;
+    dob: string;
+    constituency_id: number;
+  }[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase
+        .from('voters')
+        .select('voter_id, epic_number, full_name, dob, constituency_id')
+        .order('voter_id')
+        .range(offset, offset + 999);
+    throwIfError(error);
+    voters.push(...(data ?? []));
+    if ((data?.length ?? 0) < 1000) break;
+  }
+
+  const participated = new Set<number>();
+  if (electionId !== undefined) {
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase
+        .from('has_voted')
+        .select('voter_id')
+        .eq('election_id', electionId)
+        .order('voter_id')
+        .range(offset, offset + 999);
+      throwIfError(error);
+      for (const record of data ?? []) participated.add(record.voter_id);
+      if ((data?.length ?? 0) < 1000) break;
+    }
+  }
+
+  return {
+    rows: (voters ?? []).map((voter) => ({
+      ...voter,
+      has_voted: electionId === undefined ? null : participated.has(voter.voter_id),
+    })),
+  };
+}
+
+export async function createVoter(data: {
+  epicNumber: string;
+  fullName: string;
+  dob: string;
+  constituencyId: number;
+}) {
+  const { data: voter, error } = await getSupabaseClient()
+    .from('voters')
+    .insert({
+      epic_number: data.epicNumber,
+      full_name: data.fullName,
+      dob: data.dob,
+      constituency_id: data.constituencyId,
+    })
+    .select('voter_id, epic_number, full_name, dob, constituency_id')
+    .single();
+  throwIfError(error);
+  return voter;
+}
+
+export async function updateVoter(
+  voterId: number,
+  data: {
+    epicNumber: string;
+    fullName: string;
+    dob: string;
+    constituencyId: number;
+  }
+) {
+  const { data: voter, error } = await getSupabaseClient()
+    .from('voters')
+    .update({
+      epic_number: data.epicNumber,
+      full_name: data.fullName,
+      dob: data.dob,
+      constituency_id: data.constituencyId,
+    })
+    .eq('voter_id', voterId)
+    .select('voter_id, epic_number, full_name, dob, constituency_id')
+    .maybeSingle();
+  throwIfError(error);
+  return voter;
+}
+
 export async function getComplaints() {
   const { data, error } = await getSupabaseClient()
     .from('complaints')

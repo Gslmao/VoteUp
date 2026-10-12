@@ -56,7 +56,7 @@ export function OverviewPage({
       <div className="demo-strip">
         <Icon name="info" size={16} />
         {backendConnected
-          ? "Elections, candidates, constituencies, parties, complaints, results and turnout are loaded from the backend. Voter, nomination, observer and audit records remain local demo data."
+          ? "Elections, candidates, constituencies, parties, voters, complaints, results and turnout are loaded from the backend. Nomination, observer and audit records remain local demo data."
           : "This portal is not connected to the backend."}
       </div>
 

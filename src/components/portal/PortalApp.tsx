@@ -66,8 +66,10 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
     if (sessionStorage.getItem("ecap-session") === "active") {
       void loadAdminPortalData()
         .then((data) => {
-          setStore((current) => ({ ...current, ...data }));
-          setTurnout(data.turnout);
+          const { voters: backendVoters, turnout: backendTurnout, ...backendStore } = data;
+          setStore((current) => ({ ...current, ...backendStore }));
+          setVoters(backendVoters);
+          setTurnout(backendTurnout);
           setBackendConnected(true);
           setLoggedIn(true);
         })
@@ -182,8 +184,10 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
       body: JSON.stringify({ email, password }),
     });
     const data = await loadAdminPortalData();
-    setStore((current) => ({ ...current, ...data }));
-    setTurnout(data.turnout);
+    const { voters: backendVoters, turnout: backendTurnout, ...backendStore } = data;
+    setStore((current) => ({ ...current, ...backendStore }));
+    setVoters(backendVoters);
+    setTurnout(backendTurnout);
     setBackendConnected(true);
     sessionStorage.setItem("ecap-session", "active");
     setLoggedIn(true);

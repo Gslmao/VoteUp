@@ -64,8 +64,11 @@ can be listed, but status updates and filing dates are unavailable. The
 backend currently exposes only ongoing elections, so election lifecycle
 management and scheduled/completed election choices are not integrated.
 
-The voter directory, nomination review, observer assignments and admin audit
-history remain local demonstration data and are identified as such in the
-portal. Their forms do not write to the backend. Party recognition metadata,
-complaint filed timestamps/status updates, and an administrative audit-list
-endpoint are also backend gaps.
+The voter directory now loads from an admin-authenticated endpoint, supports
+registration and edits, and displays participation for the selected election
+from `has_voted` only. Voter deletion is disabled because other records can
+reference voters. Voter data is not stored in localStorage. Nomination review,
+observer assignments and admin audit history remain local demonstration data;
+their forms do not write to the backend. Party recognition metadata, complaint
+filed timestamps/status updates, and an administrative audit-list endpoint are
+also backend gaps.
