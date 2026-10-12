@@ -14,14 +14,9 @@ Target an approximate **70% database and 30% backend** balance. The database rem
 
 ## Current Database Baseline
 
-The operational installation sequence is:
+The complete SQL setup is consolidated in `sql/schema.sql`. It applies the base schema, v2 procedure and view fixes, admin table, development seed data, and Supabase API wrappers in order. Run it once against a new, empty database; do not run it against an existing database.
 
-1. `sql/01_schema.sql`: 13 base tables, indexes, vote audit trigger/function, base procedure, and base views.
-2. `sql/02_patch_v2_fixes.sql`: replaces the vote procedure and turnout/results views with their applied versions.
-3. `sql/03_auth.sql`: adds the separate `admins` table and a unique singleton index that limits setup to one admin account.
-4. `sql/04_seed.sql`: development seed data.
-
-The applied database therefore contains 13 base tables plus the additive `admins` table. Use the SQL definitions and the order above as the authority; do not rely on stale comments or documentation that contradict them.
+The resulting database contains 13 base tables plus the additive `admins` table. The vote-event trigger updates both the anonymous ballot audit log and the per-candidate result total.
 
 The API uses PostgreSQL through a shared `pg` pool. It validates inputs and delegates persistence to database operations. Voter identity is derived from a role-checked JWT session, not supplied in the vote body. These details explain the database boundary but should remain secondary in the generated report.
 

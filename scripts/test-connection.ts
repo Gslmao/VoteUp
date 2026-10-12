@@ -37,7 +37,7 @@ async function main() {
   console.log('Additive auth tables:', names.includes('admins') ? 'admins' : 'none');
 
   if (!names.includes('admins')) {
-    throw new Error('Expected admins from the additive sql/03_auth.sql migration');
+    throw new Error('Expected admins from the consolidated sql/schema.sql setup');
   }
   if (missing.length || unexpected.length) {
     throw new Error(`Table mismatch. Missing: ${missing.join(', ') || 'none'}; unexpected: ${unexpected.join(', ') || 'none'}`);

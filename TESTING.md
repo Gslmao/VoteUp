@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Configure `DATABASE_URL` for the disposable development PostgreSQL database.
-- Apply `sql/01_schema.sql`, `sql/02_patch_v2_fixes.sql`, `sql/03_auth.sql`, then `sql/04_seed.sql` as described in `INTEGRATION.md`.
+- Apply `sql/schema.sql` once to a new, empty development database as described in `INTEGRATION.md`. Do not run it against an existing database.
 - Start the application with `pnpm dev`.
 
 ## Static and Database Checks

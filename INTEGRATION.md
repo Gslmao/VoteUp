@@ -60,7 +60,7 @@ ADMIN_SETUP_KEY=your-secure-setup-key
 
 ## Database Objects Required
 
-Run `election_voting_schema_v2.sql` in PostgreSQL. Expected objects:
+Run `sql/schema.sql` once against a new, empty PostgreSQL database or Supabase project. It contains the complete schema, fixes, admin table, development seed data, and Supabase API wrappers. Do not run it against an existing database. Expected objects:
 
 ### Tables
 | Table | Purpose |
@@ -295,7 +295,7 @@ List complaints, newest first. Complaint listing remains admin-only.
 ## Integration Checklist
 
 - [ ] PostgreSQL 14+ running
-- [ ] Schema applied (`election_voting_schema_v2.sql`)
+- [ ] Schema applied from `sql/schema.sql` to a new, empty database
 - [ ] Reference data seeded (constituencies, parties, elections with `status='ONGOING'`)
 - [ ] `.env` configured with `DATABASE_URL`, `JWT_SECRET`, `ADMIN_SETUP_KEY`
 - [ ] `pnpm dev` starts without errors

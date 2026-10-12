@@ -1,8 +1,0 @@
-CREATE TABLE admins (
-    id              SERIAL PRIMARY KEY,
-    email           VARCHAR(255) NOT NULL UNIQUE,
-    password_hash   TEXT NOT NULL,
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE UNIQUE INDEX admins_singleton_idx ON admins ((TRUE));
