@@ -149,6 +149,39 @@ export async function getCandidates(constituencyId?: number) {
   return { rows: data ?? [] };
 }
 
+export async function getVoterCandidates(electionId?: number, constituencyId?: number) {
+  const supabase = getSupabaseClient();
+  const accepted = supabase
+    .from('nominations')
+    .select('candidate_id')
+    .eq('status', 'ACCEPTED');
+  let ballots = supabase.from('results').select('candidate_id');
+
+  if (electionId !== undefined) ballots = ballots.eq('election_id', electionId);
+
+  const [
+    { data: nominations, error: nominationsError },
+    { data: results, error: resultsError },
+    candidates,
+  ] = await Promise.all([
+    accepted,
+    ballots,
+    getCandidates(constituencyId),
+  ]);
+  throwIfError(nominationsError);
+  throwIfError(resultsError);
+
+  const acceptedIds = new Set((nominations ?? []).map((row) => row.candidate_id));
+  const ballotIds = new Set((results ?? []).map((row) => row.candidate_id));
+  return {
+    rows: candidates.rows.filter(
+      (candidate: { candidate_id: number }) =>
+        acceptedIds.has(candidate.candidate_id) &&
+        (electionId === undefined || ballotIds.has(candidate.candidate_id))
+    ),
+  };
+}
+
 export async function getConstituencies() {
   const { data, error } = await getSupabaseClient()
     .from('constituencies')
@@ -301,6 +334,57 @@ export async function getVoterByCredentials(epicNumber: string, dob: string) {
     .maybeSingle();
   throwIfError(error);
   return data;
+}
+
+export async function getVoterProfile(voterId: number) {
+  const supabase = getSupabaseClient();
+  const { data: voter, error: voterError } = await supabase
+    .from('voters')
+    .select('voter_id, epic_number, full_name, dob, constituency_id')
+    .eq('voter_id', voterId)
+    .maybeSingle();
+  throwIfError(voterError);
+  if (!voter) return null;
+
+  const { data: constituency, error: constituencyError } = await supabase
+    .from('constituencies')
+    .select('name, state_id')
+    .eq('constituency_id', voter.constituency_id)
+    .maybeSingle();
+  throwIfError(constituencyError);
+
+  const { data: state, error: stateError } = await supabase
+    .from('states')
+    .select('state_name')
+    .eq('state_id', constituency?.state_id ?? -1)
+    .maybeSingle();
+  throwIfError(stateError);
+
+  return {
+    ...voter,
+    constituency_name: constituency?.name ?? 'Unknown constituency',
+    state_name: state?.state_name ?? 'Unknown state',
+  };
+}
+
+export async function getVoterHistory(voterId: number) {
+  const { data, error } = await getSupabaseClient()
+    .from('has_voted')
+    .select('election_id, voted_at, elections(election_name, start_date)')
+    .eq('voter_id', voterId)
+    .order('voted_at', { ascending: false });
+  throwIfError(error);
+  return { rows: data ?? [] };
+}
+
+export async function getVoterComplaints(voterId: number) {
+  const { data, error } = await getSupabaseClient()
+    .from('complaints')
+    .select('complaint_id, constituency_id, election_id, description, status')
+    .eq('voter_id', voterId)
+    .order('complaint_id', { ascending: false });
+  throwIfError(error);
+  return { rows: data ?? [] };
 }
 
 export async function getAdminVoters(electionId?: number) {

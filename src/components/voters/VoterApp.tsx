@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ComplaintRecord, VoterPageKey } from "@/types/voter";
-import { initialComplaints } from "@/data/voterData";
+import { ComplaintRecord, VoterPageKey, VoterProfile } from "@/types/voter";
 import { Icon } from "@/components/ui/Icon";
+import { getApiJson } from "@/lib/portalBackend";
 import { AppHeader } from "./layout/AppHeader";
 import { Footer } from "./layout/Footer";
 import { HomePage } from "./pages/HomePage";
@@ -34,30 +34,15 @@ const protectedPages: VoterPageKey[] = [
 ];
 
 export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
-  const [loggedIn, setLoggedIn] = useState(() => {
-    if (typeof window !== "undefined") {
-      return sessionStorage.getItem("esp-demo-auth") === "yes";
-    }
-    return false;
-  });
+  const [loggedIn, setLoggedIn] = useState(false);
 
   const [page, setPage] = useState<VoterPageKey>(() => {
-    if (protectedPages.includes(initialRoute)) {
-      if (typeof window !== "undefined" && sessionStorage.getItem("esp-demo-auth") !== "yes") {
-        return "login";
-      }
-    }
-    return initialRoute;
+    return protectedPages.includes(initialRoute) ? "login" : initialRoute;
   });
 
-  const [voted, setVoted] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("esp-demo-voted-e1") === "yes";
-    }
-    return false;
-  });
+  const [voterProfile, setVoterProfile] = useState<VoterProfile | null>(null);
 
-  const [complaints, setComplaints] = useState<ComplaintRecord[]>(initialComplaints);
+  const [complaints, setComplaints] = useState<ComplaintRecord[]>([]);
 
   const [largeText, setLargeTextState] = useState(() => {
     if (typeof window !== "undefined") {
@@ -68,18 +53,48 @@ export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
 
   const [toastMessage, setToastMessage] = useState("");
 
+  const refreshSession = useCallback(async () => {
+    const session = await getApiJson<{ profile: VoterProfile }>("/api/voter/me");
+    setLoggedIn(true);
+    setVoterProfile(session.profile);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getApiJson<{
+      profile: VoterProfile;
+    }>("/api/voter/me")
+      .then((session) => {
+        if (cancelled) return;
+        setLoggedIn(true);
+        setVoterProfile(session.profile);
+        if (protectedPages.includes(initialRoute)) setPage(initialRoute);
+        else if (initialRoute === "login") setPage("dashboard");
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLoggedIn(false);
+        setVoterProfile(null);
+        if (error instanceof Error && error.message !== "Voter session required") {
+          setToastMessage(error.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialRoute]);
+
   // Handle browser back/forward buttons
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname.replace(/^\/voters\/?/, "").split("/")[0];
       const validPage = (path as VoterPageKey) || "home";
-      const isAuth = sessionStorage.getItem("esp-demo-auth") === "yes";
-      setPage(protectedPages.includes(validPage) && !isAuth ? "login" : validPage);
+      setPage(protectedPages.includes(validPage) && !loggedIn ? "login" : validPage);
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [loggedIn]);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -90,8 +105,7 @@ export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
 
   const navigate = useCallback(
     (target: VoterPageKey) => {
-      const isAuth = loggedIn || (typeof window !== "undefined" && sessionStorage.getItem("esp-demo-auth") === "yes");
-      const safeTarget = protectedPages.includes(target) && !isAuth ? "login" : target;
+      const safeTarget = protectedPages.includes(target) && !loggedIn ? "login" : target;
       setPage(safeTarget);
 
       const newUrl = safeTarget === "home" ? "/voters" : `/voters/${safeTarget}`;
@@ -104,34 +118,39 @@ export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
   );
 
   const login = useCallback(() => {
-    sessionStorage.setItem("esp-demo-auth", "yes");
-    setLoggedIn(true);
-    setPage("dashboard");
-    if (typeof window !== "undefined") {
-      window.history.pushState({}, "", "/voters/dashboard");
-    }
-    setToastMessage("Signed in to the demonstration account.");
-  }, []);
+    void refreshSession()
+      .then(() => {
+        setPage("dashboard");
+        if (typeof window !== "undefined") {
+          window.history.pushState({}, "", "/voters/dashboard");
+        }
+        setToastMessage("You are signed in.");
+      })
+      .catch((error: unknown) => {
+        setToastMessage(error instanceof Error ? error.message : "Unable to load your account.");
+      });
+  }, [refreshSession]);
 
   const logout = useCallback(() => {
-    sessionStorage.removeItem("esp-demo-auth");
-    setLoggedIn(false);
-    setPage("home");
-    if (typeof window !== "undefined") {
-      window.history.pushState({}, "", "/voters");
-    }
-    setToastMessage("You have signed out of the demonstration account.");
-  }, []);
-
-  const recordVote = useCallback((receipt: string) => {
-    localStorage.setItem("esp-demo-voted-e1", "yes");
-    localStorage.setItem("esp-demo-receipt", receipt);
-    setVoted(true);
+    void getApiJson<{ success: boolean }>("/api/auth/logout", { method: "POST" })
+      .then(() => {
+        setLoggedIn(false);
+        setVoterProfile(null);
+        setComplaints([]);
+        setPage("home");
+        if (typeof window !== "undefined") {
+          window.history.pushState({}, "", "/voters");
+        }
+        setToastMessage("You have signed out.");
+      })
+      .catch((error: unknown) => {
+        setToastMessage(error instanceof Error ? error.message : "Unable to sign out.");
+      });
   }, []);
 
   const addComplaint = useCallback((complaint: ComplaintRecord) => {
     setComplaints((prev) => [complaint, ...prev]);
-    setToastMessage("Demo complaint created successfully.");
+    setToastMessage("Complaint submitted successfully.");
   }, []);
 
   const setLargeText = useCallback((value: boolean) => {
@@ -146,17 +165,17 @@ export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
       case "login":
         return <LoginPage onLogin={login} navigate={navigate} />;
       case "dashboard":
-        return <DashboardPage navigate={navigate} voted={voted} />;
+        return <DashboardPage navigate={navigate} voter={voterProfile} />;
       case "voter-details":
-        return <VoterDetailsPage navigate={navigate} />;
+        return <VoterDetailsPage navigate={navigate} voter={voterProfile} />;
       case "elections":
         return <ElectionsPage navigate={navigate} />;
       case "candidates":
         return <CandidatesPage navigate={navigate} />;
       case "vote":
-        return <VotePage voted={voted} onVote={recordVote} navigate={navigate} />;
+        return <VotePage navigate={navigate} />;
       case "history":
-        return <HistoryPage voted={voted} />;
+        return <HistoryPage />;
       case "complaints":
         return <ComplaintsPage complaints={complaints} navigate={navigate} />;
       case "submit-complaint":
@@ -167,6 +186,7 @@ export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
         return (
           <SettingsPage
             onLogout={logout}
+            voter={voterProfile}
             largeText={largeText}
             setLargeText={setLargeText}
             toast={setToastMessage}
@@ -177,13 +197,12 @@ export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
     }
   }, [
     page,
-    voted,
+    voterProfile,
     complaints,
     largeText,
     navigate,
     login,
     logout,
-    recordVote,
     addComplaint,
     setLargeText,
   ]);
@@ -195,6 +214,7 @@ export function VoterApp({ initialRoute = "home" }: VoterAppProps) {
         current={page}
         navigate={navigate}
         onLogout={logout}
+        voter={voterProfile}
       />
       {content}
       <Footer navigate={navigate} />

@@ -1,14 +1,13 @@
 "use client";
 
-import React, { FormEvent, useState } from "react";
+import React, { FormEvent, useEffect, useState } from "react";
 import { ComplaintRecord, VoterPageKey } from "@/types/voter";
-import { elections } from "@/data/voterData";
+import { getApiJson } from "@/lib/portalBackend";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { StatusBadge } from "@/components/voters/common/StatusBadge";
 import { Field } from "@/components/voters/common/Field";
 import { PageHeading } from "@/components/voters/common/PageHeading";
-import { DemoNotice } from "@/components/voters/layout/DemoNotice";
 
 interface SubmitComplaintPageProps {
   onSubmit: (c: ComplaintRecord) => void;
@@ -27,8 +26,22 @@ export function SubmitComplaintPage({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState("");
+  const [elections, setElections] = useState<{ id: number; name: string }[]>([]);
+  const [loadError, setLoadError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  useEffect(() => {
+    void getApiJson<{ election_id: number; election_name: string }[]>("/api/elections")
+      .then((records) => setElections(records.map((record) => ({
+        id: record.election_id,
+        name: record.election_name,
+      }))))
+      .catch((error: unknown) => {
+        setLoadError(error instanceof Error ? error.message : "Unable to load elections.");
+      });
+  }, []);
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     const next: Record<string, string> = {};
     if (!values.category) next.category = "Select a complaint category.";
@@ -37,23 +50,54 @@ export function SubmitComplaintPage({
     if (values.description.trim().length < 20)
       next.description =
         "Provide at least 20 characters so the issue is clear.";
+    if (!values.electionId) next.electionId = "Select the related election.";
     setErrors(next);
     if (Object.keys(next).length) return;
 
-    const ref = `DEMO-GRV-${Math.floor(10000 + Math.random() * 89999)}`;
-    onSubmit({
-      id: `cmp-${Date.now()}`,
-      reference: ref,
-      voterId: "v1",
-      subject: values.subject,
-      category: values.category,
-      date: "18/09/2025",
-      status: "Submitted",
-      electionId: values.electionId,
-      description: values.description,
-      history: [{ date: "18/09/2025", label: "Demo complaint submitted" }],
-    });
-    setDone(ref);
+    const description = `Category: ${values.category}\nSubject: ${values.subject.trim()}\n\n${values.description.trim()}`;
+    if (description.length > 1000) {
+      setErrors({ description: "Shorten the subject or details to fit the 1000 character limit." });
+      return;
+    }
+
+    setSubmitting(true);
+    setLoadError("");
+    try {
+      const result = await getApiJson<{
+        success: boolean;
+        complaint: {
+          complaint_id: number;
+          election_id: number;
+          description: string;
+          status: string;
+        };
+      }>("/api/complaints", {
+        method: "POST",
+        body: JSON.stringify({
+          electionId: Number(values.electionId),
+          description,
+        }),
+      });
+      const submittedAt = new Date().toLocaleDateString("en-GB");
+      const reference = `CMP-${result.complaint.complaint_id}`;
+      onSubmit({
+        id: String(result.complaint.complaint_id),
+        reference,
+        voterId: "",
+        subject: values.subject.trim(),
+        category: values.category,
+        date: submittedAt,
+        status: "Submitted",
+        electionId: String(result.complaint.election_id),
+        description: values.description.trim(),
+        history: [{ date: submittedAt, label: "Complaint submitted" }],
+      });
+      setDone(reference);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Unable to submit complaint.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (done) {
@@ -64,15 +108,14 @@ export function SubmitComplaintPage({
             <span className="success-check">
               <Icon name="check" size={32} />
             </span>
-            <span className="step-label">DEMO COMPLAINT CREATED</span>
-            <h1>Your demonstration complaint is ready</h1>
+            <span className="step-label">COMPLAINT SUBMITTED</span>
+            <h1>Your complaint has been submitted</h1>
             <p>
-              No complaint was filed with a government authority. This record
-              exists only in this prototype session.
+              Your complaint was saved and is available in your account history.
             </p>
             <div className="receipt-card">
               <div>
-                <small>Demo reference number</small>
+                <small>Reference number</small>
                 <code>{done}</code>
               </div>
               <div>
@@ -100,13 +143,13 @@ export function SubmitComplaintPage({
         <PageHeading
           eyebrow="Complaints & grievances"
           title="Submit a complaint"
-          description="Create a fictional service complaint for demonstration and tracking."
+          description="Submit a complaint related to an election in your constituency."
         />
-        <DemoNotice compact />
+        {loadError && <div className="form-alert" role="alert">{loadError}</div>}
         <form className="panel complaint-form" onSubmit={submit}>
           <div className="form-section">
             <h2>Complaint details</h2>
-            <p>Fields marked required must be completed.</p>
+            <p>Fields marked required must be completed. Complaints are linked to your voter account.</p>
           </div>
           <div className="form-grid">
             <Field label="Complaint category *" error={errors.category}>
@@ -124,14 +167,14 @@ export function SubmitComplaintPage({
                 <option>Other</option>
               </select>
             </Field>
-            <Field label="Related election (optional)">
+            <Field label="Related election *" error={errors.electionId}>
               <select
                 value={values.electionId}
                 onChange={(e) =>
                   setValues({ ...values, electionId: e.target.value })
                 }
               >
-                <option value="">Not related to an election</option>
+                <option value="">Select an election</option>
                 {elections.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.name}
@@ -161,17 +204,17 @@ export function SubmitComplaintPage({
               onChange={(e) =>
                 setValues({ ...values, description: e.target.value })
               }
-              placeholder="Include enough detail to understand the issue. Do not include real personal information."
+              placeholder="Include enough detail to understand the issue."
             />
           </Field>
           <Field label="Attachment (optional)">
             <label className="upload-box">
               <Icon name="document" />
               <span>
-                <strong>Choose a demonstration file</strong>
-                <small>Mock interaction only · PDF, JPG or PNG</small>
+                <strong>Attachment unavailable</strong>
+                <small>Attachments are not currently supported.</small>
               </span>
-              <input type="file" accept=".pdf,.jpg,.jpeg,.png" />
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled />
             </label>
           </Field>
           <div className="form-footer">
@@ -182,7 +225,9 @@ export function SubmitComplaintPage({
             >
               Cancel
             </Button>
-            <Button type="submit">Submit demo complaint</Button>
+            <Button type="submit" disabled={submitting || !elections.length}>
+              {submitting ? "Submitting…" : "Submit complaint"}
+            </Button>
           </div>
         </form>
       </div>

@@ -6,10 +6,10 @@ export function DemoNotice({ compact = false }: { compact?: boolean }) {
     <div className={`demo-notice ${compact ? "compact" : ""}`}>
       <Icon name="info" size={19} />
       <div>
-        <strong>Demonstration portal</strong>
+        <strong>Prototype service</strong>
         {!compact && (
           <span>
-            This prototype uses fictional data. No real vote or complaint is submitted to any authority.
+            This is not an official election authority website. Actions update the connected application database.
           </span>
         )}
       </div>

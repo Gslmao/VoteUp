@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ComplaintRecord, VoterPageKey } from "@/types/voter";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/voters/common/StatusBadge";
 import { Field } from "@/components/voters/common/Field";
 import { PageHeading } from "@/components/voters/common/PageHeading";
 import { EmptyState } from "@/components/voters/common/EmptyState";
+import { getApiJson } from "@/lib/portalBackend";
 
 interface ComplaintsPageProps {
   complaints: ComplaintRecord[];
@@ -15,11 +16,53 @@ interface ComplaintsPageProps {
 }
 
 export function ComplaintsPage({ complaints, navigate }: ComplaintsPageProps) {
+  const [records, setRecords] = useState(complaints);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
   const [selected, setSelected] = useState<ComplaintRecord | null>(null);
 
-  const rows = complaints.filter(
+  useEffect(() => {
+    void getApiJson<{
+      complaint_id: number;
+      election_id: number;
+      description: string;
+      status: string;
+    }[]>("/api/complaints")
+      .then((result) => {
+        setRecords(result.map((record) => {
+          const category = record.description.match(/^Category:\s*(.+)$/m)?.[1] ?? "General";
+          const subject = record.description.match(/^Subject:\s*(.+)$/m)?.[1] ?? "Complaint";
+          const details = record.description.split("\n\n").slice(1).join("\n\n");
+          const status =
+            record.status === "RESOLVED"
+              ? "Resolved"
+              : record.status === "DISMISSED"
+                ? "Rejected"
+                : record.status === "INVESTIGATING"
+                  ? "Under Review"
+                  : "Submitted";
+          return {
+            id: String(record.complaint_id),
+            reference: `CMP-${record.complaint_id}`,
+            voterId: "",
+            subject,
+            category,
+            date: "—",
+            status,
+            electionId: String(record.election_id),
+            description: details || record.description,
+            history: [{ date: "—", label: status }],
+          };
+        }));
+        setLoadError("");
+      })
+      .catch((error: unknown) => {
+        setLoadError(error instanceof Error ? error.message : "Unable to load complaints.");
+      });
+  }, []);
+
+  const rows = records.filter(
     (c) =>
       (status === "All" || c.status === status) &&
       `${c.subject} ${c.reference}`
@@ -33,7 +76,7 @@ export function ComplaintsPage({ complaints, navigate }: ComplaintsPageProps) {
         <PageHeading
           eyebrow="Complaints & grievances"
           title="My complaints"
-          description="Search and track demonstration complaints belonging to this fictional voter account."
+          description="Search and track complaints submitted from your voter account."
           action={
             <Button onClick={() => navigate("submit-complaint")}>
               Submit new complaint
@@ -66,9 +109,10 @@ export function ComplaintsPage({ complaints, navigate }: ComplaintsPageProps) {
           <span>
             {rows.length} complaint{rows.length !== 1 ? "s" : ""}
           </span>
-          <small>Only records for this demo account are shown</small>
+          <small>Only complaints associated with your account are shown</small>
         </div>
 
+        {loadError && <div className="form-alert" role="alert">{loadError}</div>}
         {rows.length ? (
           <section className="panel table-panel">
             <div className="table-scroll">

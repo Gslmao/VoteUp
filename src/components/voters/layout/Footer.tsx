@@ -10,7 +10,7 @@ export function Footer({ navigate }: { navigate: (p: VoterPageKey) => void }) {
       <div className="shell footer-inner">
         <div>
           <strong>Election Services Portal</strong>
-          <p>Citizen-facing demonstration application. All records are fictional.</p>
+          <p>Prototype connected to the election system database. Verify official information with the relevant election authority.</p>
         </div>
         <div className="footer-links">
           <button onClick={() => navigate("help")}>Help</button>
@@ -28,7 +28,7 @@ export function Footer({ navigate }: { navigate: (p: VoterPageKey) => void }) {
       </div>
       <div className="footer-base">
         <div className="shell">
-          Designed for demonstration purposes only · Last reviewed 12/09/2025
+          Prototype service · Not an official government website
         </div>
       </div>
     </footer>

@@ -20,7 +20,7 @@ export function HelpPage() {
         <PageHeading
           eyebrow="Help centre"
           title="Help and frequently asked questions"
-          description="Find guidance for voter details, elections, candidates, the voting demonstration and complaints."
+          description="Find guidance for voter details, elections, candidates, voting and complaints."
         />
 
         <div className="help-search">
@@ -68,16 +68,7 @@ export function HelpPage() {
                 <Icon name="help" />
               </span>
               <h2>Need more help?</h2>
-              <p>This prototype does not connect to a real support centre.</p>
-              <div>
-                <small>Demo helpline</small>
-                <strong>1800-000-DEMO</strong>
-              </div>
-              <div>
-                <small>Demo email</small>
-                <strong>help@example.demo</strong>
-              </div>
-              <p className="muted">Monday to Friday · 09:00–17:00 IST</p>
+              <p>This prototype does not provide official support contact details. For authoritative assistance, contact the relevant election authority.</p>
             </div>
 
             <div className="help-box">

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Configure `DATABASE_URL` for the disposable development PostgreSQL database.
-- Apply `sql/schema.sql` once to a new, empty development database as described in `INTEGRATION.md`. Do not run it against an existing database.
+- Apply `sql/schema.sql` once to a new, empty development database as described in `INTEGRATION.md`. Do not run it against an existing database. For an existing installation, apply `sql/migrations/20261013_voter_complaint_ownership.sql`.
 - Start the application with `pnpm dev`.
 
 ## Static and Database Checks
@@ -18,7 +18,7 @@ The connection check lists the v2 base tables, reports the separate `admins` aut
 
 ## Voter Session and Vote
 
-Voter login establishes the mock voter session cookie. The endpoint authenticates an existing voter and does not register voters.
+Voter login establishes the voter session cookie. The endpoint authenticates an existing voter and does not register voter records.
 
 ```sh
 BASE=http://localhost:3000
@@ -47,7 +47,7 @@ curl -i -b voter-cookies.txt -X POST "$BASE/api/complaints" \
   -d '{"electionId":1,"constituencyId":1,"description":"Online voting issue"}'
 ```
 
-The API records the authenticated voter's name as `filed_by`; callers cannot supply it. A fourth complaint from the same voter inside 15 minutes returns `429` with `Retry-After`. `GET /api/admin/complaints` remains admin-authenticated and read-only.
+The API links the complaint to the authenticated voter's `voter_id`; callers cannot supply it. A fourth complaint from the same voter inside 15 minutes returns `429` with `Retry-After`. `GET /api/complaints` returns only that voter's complaints; `GET /api/admin/complaints` remains admin-authenticated.
 
 ## Election-Specific Turnout
 

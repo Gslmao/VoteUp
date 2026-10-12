@@ -1,40 +1,39 @@
 "use client";
 
-import React, { useState } from "react";
-import { participationHistory } from "@/data/voterData";
+import React, { useEffect, useState } from "react";
+import { ParticipationRecord } from "@/types/voter";
 import { Icon } from "@/components/ui/Icon";
 import { StatusBadge } from "@/components/voters/common/StatusBadge";
 import { PageHeading } from "@/components/voters/common/PageHeading";
-import { DemoNotice } from "@/components/voters/layout/DemoNotice";
 import { EmptyState } from "@/components/voters/common/EmptyState";
+import { getApiJson } from "@/lib/portalBackend";
 
-interface HistoryPageProps {
-  voted: boolean;
-}
+export function HistoryPage() {
+  const [rows, setRows] = useState<ParticipationRecord[]>([]);
+  const [loadError, setLoadError] = useState("");
 
-export function HistoryPage({ voted }: HistoryPageProps) {
-  const [receipt] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("esp-demo-receipt") || "";
-    }
-    return "";
-  });
-
-  const rows =
-    voted && receipt
-      ? [
-          {
-            id: "local",
-            voterId: "v1",
-            electionName: "Madhya Pradesh Legislative Assembly By-election",
-            date: "18/09/2025",
-            constituency: "Narmada Central",
-            status: "Participated" as const,
-            receipt,
-          },
-          ...participationHistory,
-        ]
-      : participationHistory;
+  useEffect(() => {
+    void getApiJson<{
+      profile: { constituency_name: string };
+      history: {
+        election_id: number;
+        voted_at: string;
+        elections: { election_name: string; start_date: string } | null;
+      }[];
+    }>("/api/voter/me")
+      .then((session) => setRows(session.history.map((record) => ({
+        id: `${record.election_id}`,
+        voterId: "",
+        electionName: record.elections?.election_name ?? `Election ${record.election_id}`,
+        date: formatDate(record.voted_at),
+        constituency: session.profile.constituency_name,
+        status: "Participated",
+        receipt: "Not available",
+      }))))
+      .catch((error: unknown) => {
+        setLoadError(error instanceof Error ? error.message : "Unable to load participation history.");
+      });
+  }, []);
 
   return (
     <main id="main-content" className="app-main">
@@ -42,14 +41,14 @@ export function HistoryPage({ voted }: HistoryPageProps) {
         <PageHeading
           eyebrow="Participation records"
           title="Voting history"
-          description="See local prototype participation records without revealing candidate selections."
+          description="See your recorded participation without revealing candidate selections."
         />
         <div className="privacy-banner">
           <Icon name="vote" />
           <div>
             <strong>Your candidate selection is never shown here</strong>
             <span>
-              Participation history records whether the demo was completed, not
+              Participation history records whether a vote was submitted, not
               who was selected.
             </span>
           </div>
@@ -62,10 +61,9 @@ export function HistoryPage({ voted }: HistoryPageProps) {
                 <thead>
                   <tr>
                     <th>Election</th>
-                    <th>Election date</th>
+                    <th>Recorded date</th>
                     <th>Constituency</th>
                     <th>Participation</th>
-                    <th>Demo receipt</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -78,9 +76,6 @@ export function HistoryPage({ voted }: HistoryPageProps) {
                       <td>{r.constituency}</td>
                       <td>
                         <StatusBadge status="Participated" />
-                      </td>
-                      <td>
-                        <code>{r.receipt}</code>
                       </td>
                     </tr>
                   ))}
@@ -96,7 +91,6 @@ export function HistoryPage({ voted }: HistoryPageProps) {
                   <p>
                     {r.constituency} · {r.date}
                   </p>
-                  <code>{r.receipt}</code>
                 </div>
               ))}
             </div>
@@ -108,8 +102,13 @@ export function HistoryPage({ voted }: HistoryPageProps) {
             text="Any completed simulated voting demonstration will appear here."
           />
         )}
-        <DemoNotice />
+        {loadError && <div className="form-alert" role="alert">{loadError}</div>}
       </div>
     </main>
   );
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
 }

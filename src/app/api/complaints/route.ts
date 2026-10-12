@@ -1,10 +1,35 @@
 import { NextResponse } from 'next/server';
 import { getVoterIdFromSession } from '@/lib/auth';
-import { createComplaint } from '@/lib/procedures';
+import {
+  createComplaint,
+  getVoterComplaints,
+  getVoterProfile,
+} from '@/lib/procedures';
 import { consumeComplaintRateLimit } from '@/lib/rateLimit';
 import { voterComplaintSchema } from '@/lib/validation';
 
 export const runtime = 'nodejs';
+
+export async function GET(request: Request) {
+  const voterId = await getVoterIdFromSession(request);
+  if (!voterId) {
+    return NextResponse.json({ error: 'Voter session required' }, { status: 401 });
+  }
+
+  try {
+    const profile = await getVoterProfile(voterId);
+    if (!profile) {
+      return NextResponse.json({ error: 'Voter account not found' }, { status: 404 });
+    }
+    const result = await getVoterComplaints(voterId);
+    return NextResponse.json(result.rows, {
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
+  } catch (error) {
+    console.error('Error fetching voter complaints:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   const voterId = await getVoterIdFromSession(request);
@@ -36,7 +61,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await createComplaint({ ...parsed.data, voterId });
+    const profile = await getVoterProfile(voterId);
+    if (!profile) {
+      return NextResponse.json({ error: 'Voter account not found' }, { status: 404 });
+    }
+
+    const result = await createComplaint({
+      ...parsed.data,
+      constituencyId: profile.constituency_id,
+      voterId,
+    });
     if (!result.rows[0]) {
       return NextResponse.json({ error: 'Voter account not found' }, { status: 401 });
     }

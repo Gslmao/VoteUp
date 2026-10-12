@@ -6,13 +6,26 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { StatusBadge } from "@/components/voters/common/StatusBadge";
 import { PageHeading } from "@/components/voters/common/PageHeading";
+import { VoterProfile } from "@/types/voter";
 
 interface VoterDetailsPageProps {
   navigate: (p: VoterPageKey) => void;
+  voter: VoterProfile | null;
 }
 
-export function VoterDetailsPage({ navigate }: VoterDetailsPageProps) {
+export function VoterDetailsPage({ navigate, voter }: VoterDetailsPageProps) {
   const [correction, setCorrection] = useState(false);
+  const maskedEpic = voter?.epic_number
+    ? `${voter.epic_number.slice(0, 3)}••••${voter.epic_number.slice(-3)}`
+    : "Unavailable";
+  const details = [
+    ["Full name", voter?.full_name ?? "—"],
+    ["Masked voter ID", maskedEpic],
+    ["Date of birth", voter?.dob ? formatDate(voter.dob) : "—"],
+    ["State", voter?.state_name ?? "—"],
+    ["Constituency", voter?.constituency_name ?? "—"],
+    ["Eligibility status", "Eligibility checked when voting"],
+  ];
 
   return (
     <main id="main-content" className="app-main">
@@ -20,7 +33,7 @@ export function VoterDetailsPage({ navigate }: VoterDetailsPageProps) {
         <PageHeading
           eyebrow="Voter services"
           title="My voter details"
-          description="Review the fictional registration information linked to this demo account."
+          description="Review the registration information linked to your voter account."
           action={
             <Button variant="secondary" onClick={() => setCorrection(true)}>
               Request a correction
@@ -32,32 +45,24 @@ export function VoterDetailsPage({ navigate }: VoterDetailsPageProps) {
           <div>
             <strong>Read-only demonstration record</strong>
             <span>
-              Changes cannot be submitted to a government system from this
-              prototype.
+              Contact the appropriate election authority to request a change to your registered details.
             </span>
           </div>
         </div>
 
         <section className="panel details-panel">
           <div className="details-header">
-            <span className="large-avatar">AM</span>
+            <span className="large-avatar">
+              {voter?.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() ?? "V"}
+            </span>
             <div>
-              <h2>Aarav Mehta</h2>
-              <p>Voter ID: DVP••••821</p>
+              <h2>{voter?.full_name ?? "Voter"}</h2>
+              <p>Voter ID: {maskedEpic}</p>
             </div>
             <StatusBadge status="Active" />
           </div>
           <div className="detail-grid">
-            {[
-              ["Full name", "Aarav Mehta"],
-              ["Masked voter ID", "DVP••••821"],
-              ["Date of birth", "14/08/1997"],
-              ["Gender", "Male"],
-              ["State", "Madhya Pradesh"],
-              ["Constituency", "Narmada Central"],
-              ["Registered address", "Ward 12, Narmada Central, Madhya Pradesh"],
-              ["Eligibility status", "Eligible for ongoing election"],
-            ].map(([label, value]) => (
+            {details.map(([label, value]) => (
               <div className="detail-item" key={label}>
                 <small>{label}</small>
                 <strong>{value}</strong>
@@ -68,7 +73,7 @@ export function VoterDetailsPage({ navigate }: VoterDetailsPageProps) {
             <Icon name="check" />
             <div>
               <strong>Registration active</strong>
-              <small>Fictional record last reviewed on 01/09/2025</small>
+              <small>Record retrieved from the voter registry</small>
             </div>
           </div>
         </section>
@@ -114,4 +119,9 @@ export function VoterDetailsPage({ navigate }: VoterDetailsPageProps) {
       </div>
     </main>
   );
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
 }

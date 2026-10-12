@@ -1,26 +1,67 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { VoterIconName, VoterPageKey } from "@/types/voter";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { StatusBadge } from "@/components/voters/common/StatusBadge";
 import { PageHeading } from "@/components/voters/common/PageHeading";
 import { DemoNotice } from "@/components/voters/layout/DemoNotice";
+import { VoterProfile } from "@/types/voter";
+import { getApiJson } from "@/lib/portalBackend";
 
 interface DashboardPageProps {
   navigate: (p: VoterPageKey) => void;
-  voted: boolean;
+  voter: VoterProfile | null;
 }
 
-export function DashboardPage({ navigate, voted }: DashboardPageProps) {
+export function DashboardPage({ navigate, voter }: DashboardPageProps) {
+  const [activeElectionVoted, setActiveElectionVoted] = useState(false);
+  const [activeElection, setActiveElection] = useState<{
+    election_id: number;
+    election_name: string;
+    election_type: string | null;
+    start_date: string;
+    end_date: string;
+  } | null>(null);
+  const [electionError, setElectionError] = useState("");
+  const name = voter?.full_name ?? "Voter";
+  const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+  const maskedEpic = voter?.epic_number
+    ? `${voter.epic_number.slice(0, 3)}••••${voter.epic_number.slice(-3)}`
+    : "Unavailable";
+
+  useEffect(() => {
+    void Promise.all([
+      getApiJson<{
+        election_id: number;
+        election_name: string;
+        election_type: string | null;
+        start_date: string;
+        end_date: string;
+      }[]>("/api/elections?status=ONGOING"),
+      getApiJson<{ history: { election_id: number }[] }>("/api/voter/me"),
+    ])
+      .then(([records, session]) => {
+        const currentElection = records[0] ?? null;
+        setActiveElection(currentElection);
+        setActiveElectionVoted(
+          !!currentElection &&
+            session.history.some((record) => record.election_id === currentElection.election_id)
+        );
+      })
+      .catch((error: unknown) => {
+        setElectionError(error instanceof Error ? error.message : "Unable to load elections.");
+      });
+  }, []);
+
   return (
     <main id="main-content" className="app-main">
       <div className="shell">
         <PageHeading
           eyebrow="Voter dashboard"
-          title="Welcome, Aarav"
-          description="Here is your election information and the next actions available to you."
+          title={`Welcome, ${name.split(/\s+/)[0]}`}
+          description="Here is your voter information and the next actions available to you."
           action={
             <span className="last-updated">
               Last updated
@@ -45,21 +86,21 @@ export function DashboardPage({ navigate, voted }: DashboardPageProps) {
               </button>
             </div>
             <div className="voter-row">
-              <span className="large-avatar">AM</span>
+              <span className="large-avatar">{initials}</span>
               <div>
-                <h3>Aarav Mehta</h3>
-                <p>Voter ID: DVP••••821</p>
+                <h3>{name}</h3>
+                <p>Voter ID: {maskedEpic}</p>
               </div>
               <StatusBadge status="Active" />
             </div>
             <div className="summary-details">
               <div>
                 <small>State</small>
-                <strong>Madhya Pradesh</strong>
+                <strong>{voter?.state_name ?? "—"}</strong>
               </div>
               <div>
                 <small>Constituency</small>
-                <strong>Narmada Central</strong>
+                <strong>{voter?.constituency_name ?? "—"}</strong>
               </div>
               <div>
                 <small>Registration</small>
@@ -74,20 +115,25 @@ export function DashboardPage({ navigate, voted }: DashboardPageProps) {
               <Icon name="vote" size={25} />
             </div>
             <h2>
-              {voted
-                ? "Demo participation recorded"
-                : "An election is open for you"}
+              {activeElectionVoted
+                ? "Participation recorded"
+                : activeElection
+                  ? "An election is open"
+                  : "No election is currently open"}
             </h2>
             <p>
-              {voted
-                ? "Your local demonstration receipt is available in voting history."
-                : "Review eligible candidates for the ongoing Narmada Central by-election."}
+              {activeElectionVoted
+                ? "Your participation record is available in voting history."
+                : activeElection
+                  ? "Review eligible candidates before you cast a vote."
+                  : "Check the election schedule for upcoming voting periods."}
             </p>
             <Button
-              onClick={() => navigate(voted ? "history" : "vote")}
+              onClick={() => navigate(activeElectionVoted ? "history" : activeElection ? "vote" : "elections")}
               icon="arrow"
+              disabled={!activeElection && !!electionError}
             >
-              {voted ? "View voting history" : "Start voting demo"}
+              {activeElectionVoted ? "View voting history" : activeElection ? "Start voting" : "View elections"}
             </Button>
           </section>
         </div>
@@ -96,27 +142,26 @@ export function DashboardPage({ navigate, voted }: DashboardPageProps) {
           <div className="panel-title">
             <div>
               <span className="eyebrow">Relevant election</span>
-              <h2>Ongoing in your constituency</h2>
+              <h2>Ongoing elections</h2>
             </div>
-            <StatusBadge status="Ongoing" />
+            {activeElection && <StatusBadge status="Ongoing" />}
           </div>
-          <div className="ongoing-election">
+          {activeElection ? <div className="ongoing-election">
             <div>
-              <h3>Madhya Pradesh Legislative Assembly By-election</h3>
+              <h3>{activeElection.election_name}</h3>
               <p>
-                <Icon name="location" size={17} /> Narmada Central · State
-                Assembly
+                <Icon name="location" size={17} /> {activeElection.election_type ?? "Election"}
               </p>
             </div>
             <div className="election-facts">
               <span>
                 <small>Voting period</small>
-                <strong>15/09/2025 — 18/09/2025</strong>
+                <strong>{formatDate(activeElection.start_date)} — {formatDate(activeElection.end_date)}</strong>
               </span>
               <span>
                 <small>Your participation</small>
                 <StatusBadge
-                  status={voted ? "Demo vote recorded" : "Not voted"}
+                  status={activeElectionVoted ? "Participated" : "Not voted"}
                 />
               </span>
             </div>
@@ -131,7 +176,7 @@ export function DashboardPage({ navigate, voted }: DashboardPageProps) {
                 Election details
               </Button>
             </div>
-          </div>
+          </div> : <p className="empty-note">{electionError || "No election is currently open for voting."}</p>}
         </section>
 
         <div className="dashboard-grid lower">
@@ -145,30 +190,11 @@ export function DashboardPage({ navigate, voted }: DashboardPageProps) {
             <div className="activity-list">
               <div>
                 <span className="timeline-icon">
-                  <Icon name="complaint" size={17} />
+                  <Icon name={activeElectionVoted ? "vote" : "profile"} size={17} />
                 </span>
                 <div>
-                  <strong>Complaint assigned for review</strong>
-                  <small>DEMO-GRV-10428 · 10/09/2025</small>
-                </div>
-                <StatusBadge status="Under Review" />
-              </div>
-              <div>
-                <span className="timeline-icon">
-                  <Icon name="profile" size={17} />
-                </span>
-                <div>
-                  <strong>Voter details viewed</strong>
-                  <small>08/09/2025</small>
-                </div>
-              </div>
-              <div>
-                <span className="timeline-icon">
-                  <Icon name="calendar" size={17} />
-                </span>
-                <div>
-                  <strong>Election schedule published</strong>
-                  <small>05/09/2025</small>
+                  <strong>{activeElectionVoted ? "Participation recorded" : "Voter account active"}</strong>
+                  <small>{activeElectionVoted ? "See your voting history for details." : "Your profile is connected to the voter registry."}</small>
                 </div>
               </div>
             </div>
@@ -203,4 +229,9 @@ export function DashboardPage({ navigate, voted }: DashboardPageProps) {
       </div>
     </main>
   );
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
 }

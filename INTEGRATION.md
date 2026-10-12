@@ -20,14 +20,17 @@ Next.js 16 (App Router) + PostgreSQL backend for an election voting system. All 
 ```
 src/
 ├── app/api/
-│   ├── voters/route.ts                    # POST voter login + set voter session cookie
+│   ├── auth/login/route.ts                # POST voter login + set voter session cookie
+│   ├── auth/logout/route.ts               # POST clear voter session
+│   ├── voter/me/route.ts                  # GET authenticated voter, history and complaints
+│   ├── voter/candidates/route.ts          # GET accepted voter-facing candidates
 │   ├── candidates/route.ts                # GET list, POST create (admin)
-│   ├── elections/route.ts                 # GET ongoing elections
+│   ├── elections/route.ts                 # GET elections, optional status filter
 │   ├── elections/[id]/results/route.ts    # GET results leaderboard (opt. constituency filter)
 │   ├── vote/route.ts                      # POST cast_vote (voter session required)
-│   ├── complaints/route.ts                # POST complaint (voter session + rate limit)
+│   ├── complaints/route.ts                # GET own complaints, POST complaint (voter session)
 │   ├── turnout/[constituencyId]/route.ts  # GET live turnout (requires electionId query)
-│   ├── auth/login/route.ts               # POST admin login → sets admin_token cookie
+│   ├── admin/login/route.ts               # POST admin login → sets admin_token cookie
 │   └── admin/
 │       ├── setup/route.ts                 # POST create first admin (protected by ADMIN_SETUP_KEY)
 │       ├── booths/route.ts                # GET/POST polling booths (admin)
@@ -60,7 +63,7 @@ ADMIN_SETUP_KEY=your-secure-setup-key
 
 ## Database Objects Required
 
-Run `sql/schema.sql` once against a new, empty PostgreSQL database or Supabase project. It contains the complete schema, fixes, admin table, development seed data, and Supabase API wrappers. Do not run it against an existing database. Expected objects:
+Run `sql/schema.sql` once against a new, empty PostgreSQL database or Supabase project. It contains the complete schema, fixes, admin table, development seed data, and Supabase API wrappers. Do not run it against an existing database. For a database created before voter complaint ownership was added, apply `sql/migrations/20261013_voter_complaint_ownership.sql` instead. Existing complaint rows remain visible to admins but are not attributed to voter accounts. Expected objects:
 
 ### Tables
 | Table | Purpose |
@@ -74,7 +77,7 @@ Run `sql/schema.sql` once against a new, empty PostgreSQL database or Supabase p
 | `polling_booths` | Physical booths (constituency_id, location, officer_name, capacity) |
 | `evms` | EVM machines (serial_number, booth_id) |
 | `votes` | Vote records (append-only, unique on voter_id + election_id) |
-| `complaints` | Voter complaints (filed_by, booth_id, election_id, description) |
+| `complaints` | Voter complaints (voter_id, filed_by, election_id, description) |
 | `admins` | Admin users (email, password_hash) |
 
 ### Stored Procedures
@@ -90,7 +93,7 @@ Run `sql/schema.sql` once against a new, empty PostgreSQL database or Supabase p
 
 ### Public Routes (No Auth)
 
-#### `POST /api/voters`
+#### `POST /api/auth/login`
 Log in an existing voter using their EPIC number and date of birth; this endpoint does not create voter records.
 
 ```json
@@ -103,6 +106,18 @@ Log in an existing voter using their EPIC number and date of birth; this endpoin
 Response: `{ "success": true }` + sets `voter_session` cookie (8h, HttpOnly, Secure in prod, SameSite=Lax)
 
 Errors: `400` invalid input, `401` invalid voter credentials, `500` server error
+
+#### `POST /api/auth/logout`
+Clear the current voter session cookie.
+
+#### `GET /api/voter/me`
+Requires a voter session. Returns the authenticated voter's registry profile, participation history, and complaints linked by `voter_id`. Participation history never contains ballot selections.
+
+#### `GET /api/voter/candidates?electionId=1&constituencyId=1`
+List accepted candidates with a result/ballot row for the requested election, optionally limited to a constituency.
+
+#### `GET /api/elections?status=ONGOING`
+List elections; `status` is optional and supports `SCHEDULED`, `ONGOING`, or `COMPLETED`.
 
 ---
 
@@ -244,8 +259,8 @@ Unique constraint on `serial_number` → `409` on duplicate.
 
 ---
 
-#### `POST /api/complaints` (Voter)
-File a complaint. Requires a voter session cookie; `filed_by` is taken from the authenticated voter record, not the request body. Limit: 3 complaints per voter per 15 minutes; limited responses return `429` with `Retry-After`.
+#### `GET/POST /api/complaints` (Voter)
+List or file complaints linked to the authenticated voter. Filing requires an election ID and description; the voter ID and constituency are derived from the session. Limit: 3 complaints per voter per 15 minutes; limited responses return `429` with `Retry-After`.
 
 POST body:
 ```json
@@ -265,11 +280,11 @@ List complaints, newest first. Complaint listing remains admin-only.
 
 ### Admin
 1. **Setup** (once): `POST /api/admin/setup` with `ADMIN_SETUP_KEY`
-2. **Login**: `POST /api/auth/login` → receives `admin_token` cookie
+2. **Login**: `POST /api/admin/login` → receives `admin_token` cookie
 3. **Access**: Include cookie or `Authorization: Bearer <token>` on admin routes
 
 ### Voter
-1. **Login**: `POST /api/voters` with EPIC number and date of birth → receives `voter_session` cookie
+1. **Login**: `POST /api/auth/login` with EPIC number and date of birth → receives `voter_session` cookie
 2. **Vote**: `POST /api/vote` with session cookie (automatic)
 3. **Session**: 8-hour JWT, role/audience=`voter`, subject=`voterId`
 

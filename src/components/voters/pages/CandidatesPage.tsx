@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { CandidateRecord, VoterPageKey } from "@/types/voter";
-import { candidates, parties } from "@/data/voterData";
+import { getApiJson } from "@/lib/portalBackend";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { Field } from "@/components/voters/common/Field";
@@ -14,11 +14,64 @@ interface CandidatesPageProps {
 }
 
 export function CandidatesPage({ navigate }: CandidatesPageProps) {
+  const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
+  const [parties, setParties] = useState<{ id: string; name: string; symbol: string }[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
   const [party, setParty] = useState("All");
   const [constituency, setConstituency] = useState("All");
   const [sort, setSort] = useState("Name A–Z");
   const [selected, setSelected] = useState<CandidateRecord | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [candidateRows, partyRows, constituencyRows] = await Promise.all([
+          getApiJson<{
+            candidate_id: number;
+            full_name: string;
+            dob: string;
+            party_id: number | null;
+            party_name: string | null;
+            constituency_id: number;
+          }[]>("/api/voter/candidates"),
+          getApiJson<{ party_id: number; party_name: string; symbol: string | null }[]>("/api/parties"),
+          getApiJson<{ constituency_id: number; name: string }[]>("/api/constituencies"),
+        ]);
+        if (cancelled) return;
+
+        const constituencyNames = new Map(
+          constituencyRows.map((row) => [row.constituency_id, row.name])
+        );
+        const mappedParties = partyRows.map((row) => ({
+          id: String(row.party_id),
+          name: row.party_name,
+          symbol: row.symbol ?? "•",
+        }));
+        setParties(mappedParties);
+        setCandidates(candidateRows.map((row) => {
+          const age = calculateAge(row.dob);
+          return {
+            id: String(row.candidate_id),
+            name: row.full_name,
+            partyId: String(row.party_id ?? ""),
+            constituency: constituencyNames.get(row.constituency_id) ?? "Unknown constituency",
+            profile: "Candidate with an accepted nomination.",
+            age,
+            profession: "Not provided",
+            nomination: "Accepted" as const,
+            electionId: "",
+          };
+        }));
+        setLoadError("");
+      } catch (error) {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : "Unable to load candidates.");
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, []);
 
   const visible = candidates
     .filter(
@@ -34,7 +87,11 @@ export function CandidatesPage({ navigate }: CandidatesPageProps) {
         : a.name.localeCompare(b.name)
     );
 
-  const partyFor = (id: string) => parties.find((p) => p.id === id)!;
+  const partyFor = (id: string) => parties.find((p) => p.id === id) ?? {
+    id,
+    name: "Independent",
+    symbol: "•",
+  };
 
   return (
     <main id="main-content" className="app-main">
@@ -42,8 +99,7 @@ export function CandidatesPage({ navigate }: CandidatesPageProps) {
         <PageHeading
           eyebrow="Public candidate directory"
           title="Candidate information"
-          description="Browse fictional demonstration profiles for candidates with accepted mock nominations."
-          action={<span className="fiction-label">FICTIONAL DATA</span>}
+          description="Browse candidates with accepted nominations in the connected election registry."
         />
 
         <div className="filter-bar candidate-filters">
@@ -89,8 +145,10 @@ export function CandidatesPage({ navigate }: CandidatesPageProps) {
           <span>
             {visible.length} accepted candidate{visible.length !== 1 ? "s" : ""}
           </span>
-          <small>Profiles are fictional and provide no endorsement</small>
+          <small>Candidate records are shown as stored in the connected database</small>
         </div>
+
+        {loadError && <div className="form-alert" role="alert">{loadError}</div>}
 
         <div className="candidate-grid">
           {visible.map((c) => {
@@ -108,7 +166,7 @@ export function CandidatesPage({ navigate }: CandidatesPageProps) {
                     <h2>{c.name}</h2>
                     <p>{p.name}</p>
                   </div>
-                  <span className="symbol" title={`Fictional symbol: ${p.symbol}`}>
+                  <span className="symbol" title={`Party symbol: ${p.symbol}`}>
                     {p.symbol.slice(0, 1)}
                   </span>
                 </div>
@@ -166,7 +224,7 @@ export function CandidatesPage({ navigate }: CandidatesPageProps) {
                     .join("")}
                 </span>
                 <div>
-                  <span className="eyebrow">Candidate profile · Fictional</span>
+                  <span className="eyebrow">Candidate profile</span>
                   <h2>{selected.name}</h2>
                   <p>{partyFor(selected.partyId).name}</p>
                 </div>
@@ -191,21 +249,16 @@ export function CandidatesPage({ navigate }: CandidatesPageProps) {
                 </div>
               </div>
               <div className="instruction-box">
-                <strong>Demonstration information</strong>
+                <strong>Candidate information</strong>
                 <p>
-                  This fictional profile does not include or imply criminal,
-                  financial or personal disclosures.
+                  Additional candidate disclosures are not available in the current registry.
                 </p>
               </div>
               <div style={{ marginTop: "18px" }}>
                 <Button variant="secondary" onClick={() => setSelected(null)}>
                   Close profile
                 </Button>
-                {selected.electionId === "e1" && (
-                  <Button onClick={() => navigate("vote")}>
-                    Open voting demo
-                  </Button>
-                )}
+                <Button onClick={() => navigate("vote")}>Open voting</Button>
               </div>
             </div>
           </div>
@@ -213,4 +266,15 @@ export function CandidatesPage({ navigate }: CandidatesPageProps) {
       </div>
     </main>
   );
+}
+
+function calculateAge(dob: string) {
+  const birthDate = new Date(`${dob.slice(0, 10)}T00:00:00`);
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  if (
+    now.getMonth() < birthDate.getMonth() ||
+    (now.getMonth() === birthDate.getMonth() && now.getDate() < birthDate.getDate())
+  ) age -= 1;
+  return age;
 }

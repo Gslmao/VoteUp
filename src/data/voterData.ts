@@ -259,27 +259,27 @@ export const participationHistory: ParticipationRecord[] = [
 export const faqs: FaqItem[] = [
   {
     question: "How do I access my voter details?",
-    answer: "Sign in with the demo credentials, then choose My voter details from the navigation. Details are read-only in this prototype.",
+    answer: "Sign in with the EPIC number and date of birth associated with your voter record, then choose My voter details.",
   },
   {
     question: "How can I check election information?",
-    answer: "Open Elections to search and filter all available fictional elections by status, state, or constituency.",
+    answer: "Open Elections to search and filter the election records currently available in the connected database.",
   },
   {
     question: "How do I find eligible candidates?",
-    answer: "Choose an election and select View candidates. Only candidates with accepted mock nominations are shown in the voting demonstration.",
+    answer: "Open Candidate information to browse accepted nominations. The ballot shows candidates registered for the active election and your constituency.",
   },
   {
-    question: "How does the simulated voting demonstration work?",
-    answer: "The five-step flow lets you select and review a fictional candidate. It records participation locally, but does not cast or transmit a real vote.",
+    question: "How is my vote recorded?",
+    answer: "The voter session is verified by the backend and the database enforces one vote per election. Participation history does not include your candidate selection. This prototype is not an official voting service.",
   },
   {
     question: "How do I submit and track a complaint?",
-    answer: "Use Submit complaint to create a demo grievance. You can then track it under My complaints using its DEMO reference number.",
+    answer: "Submit a complaint while signed in. The complaint is linked to your voter account and can be tracked under My complaints.",
   },
   {
     question: "Why can I not sign in?",
-    answer: "This prototype accepts only the displayed demo email or voter ID and password. No real credentials should be entered.",
+    answer: "Check that your EPIC number and date of birth match the voter registry. Contact the relevant election authority if your details need correction.",
   },
   {
     question: "What accessibility options are available?",

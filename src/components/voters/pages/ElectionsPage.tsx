@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ElectionRecord, VoterPageKey } from "@/types/voter";
-import { elections } from "@/data/voterData";
+import { getApiJson } from "@/lib/portalBackend";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { StatusBadge } from "@/components/voters/common/StatusBadge";
@@ -14,9 +14,45 @@ interface ElectionsPageProps {
 }
 
 export function ElectionsPage({ navigate }: ElectionsPageProps) {
+  const [elections, setElections] = useState<ElectionRecord[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<ElectionRecord | null>(null);
+
+  useEffect(() => {
+    void getApiJson<{
+      election_id: number;
+      election_name: string;
+      election_type: string | null;
+      start_date: string;
+      end_date: string;
+      status: string;
+    }[]>("/api/elections")
+      .then((records) => {
+        setElections(records.map((record) => ({
+          id: String(record.election_id),
+          name: record.election_name,
+          type: record.election_type ?? "Election",
+          state: "—",
+          constituency: "All constituencies",
+          startDate: formatDate(record.start_date),
+          endDate: formatDate(record.end_date),
+          pollingDate: formatDate(record.start_date),
+          status:
+            record.status === "ONGOING"
+              ? "Ongoing"
+              : record.status === "COMPLETED"
+                ? "Completed"
+                : "Upcoming",
+          description: `${record.election_name} (${formatDate(record.start_date)} – ${formatDate(record.end_date)}).`,
+        })));
+        setLoadError("");
+      })
+      .catch((error: unknown) => {
+        setLoadError(error instanceof Error ? error.message : "Unable to load elections.");
+      });
+  }, []);
 
   const visible = elections.filter(
     (e) =>
@@ -32,7 +68,7 @@ export function ElectionsPage({ navigate }: ElectionsPageProps) {
         <PageHeading
           eyebrow="Election information"
           title="Elections"
-          description="Search fictional election schedules and view eligibility, candidates and voting instructions."
+          description="Search election schedules and view voting periods and available candidate information."
         />
 
         <div className="filter-bar">
@@ -62,8 +98,13 @@ export function ElectionsPage({ navigate }: ElectionsPageProps) {
           <span>
             {visible.length} election{visible.length !== 1 ? "s" : ""} found
           </span>
-          <small>All dates use DD/MM/YYYY format</small>
+          <small>Dates use DD/MM/YYYY format</small>
         </div>
+
+        {loadError && <div className="form-alert" role="alert">{loadError}</div>}
+        {!loadError && elections.length === 0 && (
+          <div className="form-alert" role="status">No elections are currently available.</div>
+        )}
 
         <div className="election-list">
           {visible.map((e) => (
@@ -97,8 +138,8 @@ export function ElectionsPage({ navigate }: ElectionsPageProps) {
                 <Button variant="secondary" onClick={() => setSelected(e)}>
                   View details
                 </Button>
-                {e.status === "Ongoing" && e.constituency === "Narmada Central" ? (
-                  <Button onClick={() => navigate("vote")}>Voting demo</Button>
+                {e.status === "Ongoing" ? (
+                  <Button onClick={() => navigate("vote")}>Vote in election</Button>
                 ) : (
                   <span className="disabled-explain">
                     <Button disabled>Voting unavailable</Button>
@@ -162,17 +203,15 @@ export function ElectionsPage({ navigate }: ElectionsPageProps) {
                 <div>
                   <small>Your eligibility</small>
                   <strong>
-                    {selected.constituency === "Narmada Central"
-                      ? "Eligible (mock record)"
-                      : "Not eligible"}
+                    Check eligibility using your registered constituency
                   </strong>
                 </div>
               </div>
               <div className="instruction-box">
                 <strong>Voting instructions</strong>
                 <p>
-                  Review candidate information before entering the simulated
-                  voting flow. Only ongoing, eligible elections can be selected.
+                  Review candidate information before voting. Eligibility is
+                  checked against your voter record when you vote.
                 </p>
               </div>
               <div className="modal-actions" style={{ marginTop: "18px" }}>
@@ -185,10 +224,9 @@ export function ElectionsPage({ navigate }: ElectionsPageProps) {
                 >
                   View candidates
                 </Button>
-                {selected.status === "Ongoing" &&
-                  selected.constituency === "Narmada Central" && (
+                {selected.status === "Ongoing" && (
                     <Button onClick={() => navigate("vote")}>
-                      Start voting demo
+                      Start voting
                     </Button>
                   )}
               </div>
@@ -198,4 +236,9 @@ export function ElectionsPage({ navigate }: ElectionsPageProps) {
       </div>
     </main>
   );
+}
+
+function formatDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
 }

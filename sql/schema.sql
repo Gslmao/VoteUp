@@ -596,6 +596,7 @@ CREATE TABLE results (
 
 CREATE TABLE complaints (
     complaint_id    SERIAL PRIMARY KEY,
+    voter_id        INT REFERENCES voters(voter_id),
     filed_by        VARCHAR(150),
     constituency_id INT REFERENCES constituencies(constituency_id),
     election_id     INT NOT NULL REFERENCES elections(election_id),
@@ -651,6 +652,8 @@ CREATE INDEX idx_results_candidate
     ON results (candidate_id);
 CREATE INDEX idx_audit_log_changed_at
     ON audit_log (changed_at DESC);
+CREATE INDEX idx_complaints_voter_id
+    ON complaints (voter_id);
 
 -- ============================================================
 -- 3. VOTE AUDIT TRIGGER
@@ -1025,9 +1028,9 @@ BEGIN
     END IF;
 
     INSERT INTO public.complaints (
-        filed_by, constituency_id, election_id, description
+        voter_id, filed_by, constituency_id, election_id, description
     )
-    VALUES (v_filed_by, p_constituency_id, p_election_id, p_description)
+    VALUES (p_voter_id, v_filed_by, p_constituency_id, p_election_id, p_description)
     RETURNING * INTO v_complaint;
 
     INSERT INTO public.audit_log (table_name, operation, row_id, details)

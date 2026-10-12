@@ -52,6 +52,16 @@ export interface VoterRecord {
   email: string;
 }
 
+export interface VoterProfile {
+  voter_id: number;
+  epic_number: string;
+  full_name: string;
+  dob: string;
+  constituency_id: number;
+  constituency_name: string;
+  state_name: string;
+}
+
 export interface PartyRecord {
   id: string;
   name: string;

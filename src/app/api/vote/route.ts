@@ -27,17 +27,17 @@ export async function POST(request: Request) {
   } catch (err: unknown) {
     console.error('Error casting vote:', err);
     const message = err instanceof Error ? err.message : '';
-    if (message.includes('already voted')) {
+    const code =
+      typeof err === 'object' && err !== null && 'code' in err
+        ? err.code
+        : undefined;
+    if (code === 'VT004' || message.includes('already voted')) {
       return NextResponse.json(
         { error: 'Voter has already voted in this election' },
         { status: 409 }
       );
     }
-    if (
-      message.includes('Voter not found') ||
-      message.includes('Election is not open') ||
-      message.includes('Candidate is not registered')
-    ) {
+    if (['VT001', 'VT002', 'VT003'].includes(String(code))) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

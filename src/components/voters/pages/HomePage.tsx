@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
-import { VoterIconName, VoterPageKey } from "@/types/voter";
-import { announcements, elections } from "@/data/voterData";
+import React, { useEffect, useState } from "react";
+import { ElectionRecord, VoterIconName, VoterPageKey } from "@/types/voter";
+import { getApiJson } from "@/lib/portalBackend";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { StatusBadge } from "@/components/voters/common/StatusBadge";
@@ -12,7 +12,56 @@ interface HomePageProps {
   navigate: (p: VoterPageKey) => void;
 }
 
+function formatDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+function monthLabel(value: string) {
+  const month = Number(value.slice(3, 5));
+  return Number.isInteger(month) && month >= 1 && month <= 12
+    ? new Date(2000, month - 1, 1).toLocaleString("en", { month: "short" }).toUpperCase()
+    : "—";
+}
+
 export function HomePage({ navigate }: HomePageProps) {
+  const [elections, setElections] = useState<ElectionRecord[]>([]);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    void getApiJson<{
+      election_id: number;
+      election_name: string;
+      election_type: string | null;
+      start_date: string;
+      end_date: string;
+      status: string;
+    }[]>("/api/elections")
+      .then((records) => setElections(records.map((record) => ({
+        id: String(record.election_id),
+        name: record.election_name,
+        type: record.election_type ?? "Election",
+        state: "",
+        constituency: "All constituencies",
+        startDate: formatDate(record.start_date),
+        endDate: formatDate(record.end_date),
+        pollingDate: formatDate(record.start_date),
+        status:
+          record.status === "ONGOING"
+            ? "Ongoing"
+            : record.status === "COMPLETED"
+              ? "Completed"
+              : "Upcoming",
+        description: record.election_name,
+      }))))
+      .catch((error: unknown) => {
+        setLoadError(error instanceof Error ? error.message : "Unable to load elections.");
+      });
+  }, []);
+
+  const featuredElection =
+    elections.find((election) => election.status === "Ongoing") ?? elections[0];
+
   return (
     <main id="main-content">
       <section className="service-hero">
@@ -42,19 +91,23 @@ export function HomePage({ navigate }: HomePageProps) {
 
           <div className="election-focus">
             <div className="focus-top">
-              <span className="live-dot" /> ONGOING ELECTION
+              <span className="live-dot" />
+              {featuredElection?.status === "Ongoing" ? "ONGOING ELECTION" : "ELECTION INFORMATION"}
             </div>
-            <h2>Madhya Pradesh Legislative Assembly By-election</h2>
+            <h2>{featuredElection?.name ?? "No election information available"}</h2>
             <div className="focus-detail">
               <Icon name="location" size={18} />
               <span>
-                <small>Constituency</small>Narmada Central
+                <small>Electorate</small>{featuredElection?.constituency ?? "—"}
               </span>
             </div>
             <div className="focus-detail">
               <Icon name="calendar" size={18} />
               <span>
-                <small>Polling period</small>15/09/2025 — 18/09/2025
+                <small>Election period</small>
+                {featuredElection
+                  ? `${featuredElection.startDate} — ${featuredElection.endDate}`
+                  : "—"}
               </span>
             </div>
             <Button
@@ -93,7 +146,7 @@ export function HomePage({ navigate }: HomePageProps) {
             [
               "users",
               "Explore candidates",
-              "Review fictional profiles for accepted candidates.",
+              "Review candidates with accepted nominations.",
               "candidates",
             ],
             [
@@ -147,18 +200,12 @@ export function HomePage({ navigate }: HomePageProps) {
                 >
                   <span className="date-block">
                     <b>{e.pollingDate.slice(0, 2)}</b>
-                    <small>
-                      {e.pollingDate.slice(3, 5) === "09"
-                        ? "SEP"
-                        : e.pollingDate.slice(3, 5) === "12"
-                        ? "DEC"
-                        : "JUN"}
-                    </small>
+                    <small>{monthLabel(e.pollingDate)}</small>
                   </span>
                   <span>
                     <strong>{e.name}</strong>
                     <small>
-                      {e.constituency} · {e.type}
+                      {e.type}
                     </small>
                   </span>
                   <StatusBadge status={e.status} />
@@ -176,15 +223,20 @@ export function HomePage({ navigate }: HomePageProps) {
               </div>
             </div>
             <div className="announcements">
-              {announcements.map((a) => (
-                <div className="announcement" key={a.id}>
-                  <span>{a.date}</span>
-                  <div>
-                    <small>{a.tag}</small>
-                    <strong>{a.title}</strong>
-                  </div>
+              <div className="announcement">
+                <span>INFO</span>
+                <div>
+                  <small>Connected data</small>
+                  <strong>Election information is retrieved from the application database.</strong>
                 </div>
-              ))}
+              </div>
+              {loadError && <div className="form-alert" role="alert">{loadError}</div>}
+              {!loadError && elections.length === 0 && (
+                <div className="announcement">
+                  <span>—</span>
+                  <div><small>Election schedule</small><strong>No elections are available right now.</strong></div>
+                </div>
+              )}
             </div>
           </div>
         </div>

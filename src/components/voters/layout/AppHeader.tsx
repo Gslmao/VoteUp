@@ -5,12 +5,14 @@ import Link from "next/link";
 import { VoterIconName, VoterPageKey } from "@/types/voter";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
+import { VoterProfile } from "@/types/voter";
 
 interface AppHeaderProps {
   loggedIn: boolean;
   current: VoterPageKey;
   navigate: (p: VoterPageKey) => void;
   onLogout: () => void;
+  voter: VoterProfile | null;
 }
 
 export function AppHeader({
@@ -18,6 +20,7 @@ export function AppHeader({
   current,
   navigate,
   onLogout,
+  voter,
 }: AppHeaderProps) {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -43,6 +46,12 @@ export function AppHeader({
     setOpen(false);
     setProfileOpen(false);
   };
+  const initials = voter?.full_name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() ?? "V";
 
   return (
     <header className="site-header">
@@ -89,9 +98,9 @@ export function AppHeader({
                   onClick={() => setProfileOpen(!profileOpen)}
                   aria-expanded={profileOpen}
                 >
-                  <span className="avatar">AM</span>
+                  <span className="avatar">{initials}</span>
                   <span className="profile-name">
-                    Aarav Mehta
+                    {voter?.full_name ?? "Voter"}
                     <small>Voter account</small>
                   </span>
                   <Icon name="chevron" size={16} />

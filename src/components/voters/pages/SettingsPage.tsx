@@ -6,12 +6,14 @@ import { Icon } from "@/components/ui/Icon";
 import { Field } from "@/components/voters/common/Field";
 import { PageHeading } from "@/components/voters/common/PageHeading";
 import { Toggle } from "@/components/voters/common/Toggle";
+import { VoterProfile } from "@/types/voter";
 
 interface SettingsPageProps {
   onLogout: () => void;
   largeText: boolean;
   setLargeText: (v: boolean) => void;
   toast: (m: string) => void;
+  voter: VoterProfile | null;
 }
 
 export function SettingsPage({
@@ -19,6 +21,7 @@ export function SettingsPage({
   largeText,
   setLargeText,
   toast,
+  voter,
 }: SettingsPageProps) {
   const [emailNotices, setEmailNotices] = useState(true);
   const [electionNotices, setElectionNotices] = useState(true);
@@ -29,7 +32,7 @@ export function SettingsPage({
         <PageHeading
           eyebrow="Account"
           title="Profile and settings"
-          description="Manage harmless local preferences for this fictional demonstration account."
+          description="Manage accessibility preferences and review your voter account."
         />
 
         <div className="settings-layout">
@@ -49,23 +52,33 @@ export function SettingsPage({
             <section className="panel settings-section">
               <div className="settings-heading">
                 <h2>Profile information</h2>
-                <span>DEMO ACCOUNT</span>
+                <span>VOTER ACCOUNT</span>
               </div>
               <div className="details-header mini">
-                <span className="large-avatar">AM</span>
+                <span className="large-avatar">
+                  {voter?.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() ?? "V"}
+                </span>
                 <div>
-                  <h3>Aarav Mehta</h3>
-                  <p>aarav@example.demo</p>
+                  <h3>{voter?.full_name ?? "Voter"}</h3>
+                  <p>
+                    EPIC number: {voter?.epic_number
+                      ? `${voter.epic_number.slice(0, 3)}••••${voter.epic_number.slice(-3)}`
+                      : "Unavailable"}
+                  </p>
                 </div>
               </div>
               <div className="detail-grid">
                 <div className="detail-item">
                   <small>Masked voter ID</small>
-                  <strong>DVP••••821</strong>
+                  <strong>
+                    {voter?.epic_number
+                      ? `${voter.epic_number.slice(0, 3)}••••${voter.epic_number.slice(-3)}`
+                      : "Unavailable"}
+                  </strong>
                 </div>
                 <div className="detail-item">
                   <small>Constituency</small>
-                  <strong>Narmada Central</strong>
+                  <strong>{voter?.constituency_name ?? "—"}</strong>
                 </div>
               </div>
             </section>
@@ -87,7 +100,7 @@ export function SettingsPage({
                 checked={emailNotices}
                 onChange={setEmailNotices}
                 title="Email reminders"
-                text="Receive fictional reminders at the demo email."
+                text="Email reminders are not configured for this account."
               />
               <Toggle
                 checked={electionNotices}
@@ -116,8 +129,7 @@ export function SettingsPage({
               <div>
                 <h2>Sign out</h2>
                 <p>
-                  End the current demonstration session. Local demo records
-                  remain on this device.
+                  End the current voter session.
                 </p>
               </div>
               <Button variant="danger" onClick={onLogout}>
