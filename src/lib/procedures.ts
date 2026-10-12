@@ -1,54 +1,68 @@
-import { query } from './db';
+import type { PostgrestError } from '@supabase/supabase-js';
+import { getSupabaseClient } from './db';
+
+class DatabaseError extends Error {
+  constructor(error: PostgrestError) {
+    super(error.message);
+    this.name = 'DatabaseError';
+    this.code = error.code;
+  }
+
+  readonly code: string;
+}
+
+function throwIfError(error: PostgrestError | null): void {
+  if (error) throw new DatabaseError(error);
+}
 
 export async function castVote(params: {
   voterId: number;
   electionId: number;
   candidateId: number;
 }) {
-  return query('CALL cast_vote($1, $2, $3)', [
-    params.voterId,
-    params.electionId,
-    params.candidateId,
-  ]);
+  const { error } = await getSupabaseClient().rpc('cast_vote_api', {
+    p_voter_id: params.voterId,
+    p_election_id: params.electionId,
+    p_candidate_id: params.candidateId,
+  });
+  throwIfError(error);
 }
 
 export async function getLiveTurnout(constituencyId: number, electionId: number) {
-  const result = await query(
-    `SELECT * FROM view_live_turnout
-     WHERE constituency_id = $1 AND election_id = $2`,
-    [constituencyId, electionId]
-  );
-  return { rows: result.rows };
+  const { data, error } = await getSupabaseClient()
+    .from('view_live_turnout')
+    .select('*')
+    .eq('constituency_id', constituencyId)
+    .eq('election_id', electionId);
+  throwIfError(error);
+  return { rows: data ?? [] };
 }
 
 export async function getElections(status?: string) {
-  const result = status
-    ? await query('SELECT * FROM elections WHERE status = $1 ORDER BY election_id', [status])
-    : await query('SELECT * FROM elections ORDER BY election_id');
-  return { rows: result.rows };
+  let request = getSupabaseClient().from('elections').select('*').order('election_id');
+  if (status) request = request.eq('status', status);
+  const { data, error } = await request;
+  throwIfError(error);
+  return { rows: data ?? [] };
 }
 
 export async function getResultsLeaderboard(electionId: number, constituencyId?: number) {
-  const result = await query(
-    `SELECT * FROM view_results_leaderboard
-     WHERE election_id = $1 AND ($2::INT IS NULL OR constituency_id = $2)
-     ORDER BY constituency_id, rank`,
-    [electionId, constituencyId ?? null]
-  );
-  return { rows: result.rows };
+  let request = getSupabaseClient()
+    .from('view_results_leaderboard')
+    .select('*')
+    .eq('election_id', electionId);
+  if (constituencyId !== undefined) request = request.eq('constituency_id', constituencyId);
+  const { data, error } = await request.order('constituency_id').order('rank');
+  throwIfError(error);
+  return { rows: data ?? [] };
 }
 
 export async function getCandidates(constituencyId?: number) {
-  const result = await query(
-        `SELECT c.candidate_id, c.full_name, c.dob, c.party_id, p.party_name,
-          c.constituency_id, c.assets_declared_inr
-     FROM candidates c
-     LEFT JOIN parties p ON p.party_id = c.party_id
-     WHERE ($1::INT IS NULL OR c.constituency_id = $1)
-     ORDER BY c.candidate_id`,
-    [constituencyId ?? null]
-  );
-  return { rows: result.rows };
+  const { data, error } = await getSupabaseClient().rpc('get_candidates_api', {
+    p_constituency_id: constituencyId ?? null,
+  });
+  throwIfError(error);
+  return { rows: data ?? [] };
 }
 
 export async function createCandidate(data: {
@@ -58,39 +72,37 @@ export async function createCandidate(data: {
   constituencyId: number;
   electionId: number;
 }) {
-  const result = await query(
-    `WITH new_candidate AS (
-       INSERT INTO candidates(full_name, dob, party_id, constituency_id)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *
-     ), new_nomination AS (
-       INSERT INTO nominations(candidate_id, filed_date)
-       SELECT candidate_id, CURRENT_DATE FROM new_candidate
-       RETURNING candidate_id
-     ), new_result AS (
-       INSERT INTO results(election_id, candidate_id, total_votes)
-       SELECT $5, candidate_id, 0 FROM new_candidate
-       RETURNING candidate_id
-     )
-     SELECT new_candidate.* FROM new_candidate
-     JOIN new_nomination USING (candidate_id)
-     JOIN new_result USING (candidate_id)`,
-    [data.fullName, data.dob, data.partyId ?? null, data.constituencyId, data.electionId]
-  );
-  return result.rows[0];
+  const { data: candidate, error } = await getSupabaseClient()
+    .rpc('create_candidate_api', {
+      p_full_name: data.fullName,
+      p_dob: data.dob,
+      p_party_id: data.partyId ?? null,
+      p_constituency_id: data.constituencyId,
+      p_election_id: data.electionId,
+    })
+    .single();
+  throwIfError(error);
+  return candidate;
 }
 
 export async function getVoterByCredentials(epicNumber: string, dob: string) {
-  const result = await query<{ voter_id: number }>(
-    'SELECT voter_id FROM voters WHERE epic_number = $1 AND dob = $2',
-    [epicNumber, dob]
-  );
-  return result.rows[0] ?? null;
+  const { data, error } = await getSupabaseClient()
+    .from('voters')
+    .select('voter_id')
+    .eq('epic_number', epicNumber)
+    .eq('dob', dob)
+    .maybeSingle();
+  throwIfError(error);
+  return data;
 }
 
 export async function getComplaints() {
-  const result = await query('SELECT * FROM complaints ORDER BY complaint_id DESC');
-  return { rows: result.rows };
+  const { data, error } = await getSupabaseClient()
+    .from('complaints')
+    .select('*')
+    .order('complaint_id', { ascending: false });
+  throwIfError(error);
+  return { rows: data ?? [] };
 }
 
 export async function createComplaint(data: {
@@ -99,32 +111,36 @@ export async function createComplaint(data: {
   electionId: number;
   description: string;
 }) {
-  const result = await query(
-    `INSERT INTO complaints(filed_by, constituency_id, election_id, description)
-     SELECT v.full_name, $2, $3, $4
-     FROM voters v
-     WHERE v.voter_id = $1
-     RETURNING *`,
-    [data.voterId, data.constituencyId ?? null, data.electionId, data.description]
-  );
-  return { rows: result.rows };
+  const { data: rows, error } = await getSupabaseClient().rpc('create_complaint_api', {
+    p_voter_id: data.voterId,
+    p_constituency_id: data.constituencyId ?? null,
+    p_election_id: data.electionId,
+    p_description: data.description,
+  });
+  throwIfError(error);
+  return { rows: rows ?? [] };
 }
 
 export async function createAdmin(data: {
   email: string;
   passwordHash: string;
 }) {
-  const result = await query(
-    'INSERT INTO admins(email, password_hash) VALUES ($1, $2) RETURNING id, email',
-    [data.email, data.passwordHash]
-  );
-  return { rows: result.rows };
+  const { data: admin, error } = await getSupabaseClient()
+    .rpc('create_admin_api', {
+      p_email: data.email,
+      p_password_hash: data.passwordHash,
+    })
+    .single();
+  throwIfError(error);
+  return { rows: [admin] };
 }
 
 export async function getAdminByEmail(email: string) {
-  const result = await query(
-    'SELECT id, email, password_hash FROM admins WHERE email = $1',
-    [email]
-  );
-  return result.rows[0] ?? null;
+  const { data, error } = await getSupabaseClient()
+    .from('admins')
+    .select('id, email, password_hash')
+    .eq('email', email)
+    .maybeSingle();
+  throwIfError(error);
+  return data;
 }
