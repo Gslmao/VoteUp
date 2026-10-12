@@ -1,11 +1,20 @@
-import { PortalApp } from "@/components/portal/PortalApp";
-import { PageKey } from "@/types/portal";
+import { redirect } from "next/navigation";
+import { navItems } from "@/data/mockData";
 
-export default async function DynamicRoutePage({
+export default async function LegacyRouteHandler({
   params,
 }: {
   params: Promise<{ page: string }>;
 }) {
   const { page } = await params;
-  return <PortalApp initialRoute={page as PageKey} />;
+
+  if (navItems.some((n) => n.key === page)) {
+    redirect(`/admin/${page}`);
+  }
+
+  if (page === "login") {
+    redirect("/admin");
+  }
+
+  redirect("/");
 }

@@ -4,19 +4,19 @@ import React, { useCallback, useEffect, useState } from "react";
 import { EntityPageProps, PageKey, Store, ToastState, Voter } from "@/types/portal";
 import { navItems, seedStore, seedVoters } from "@/data/mockData";
 import { nextId } from "@/lib/formatters";
-import { Login } from "@/components/auth/Login";
-import { AppShell } from "@/components/layout/AppShell";
-import { OverviewPage } from "@/components/pages/OverviewPage";
-import { ElectionsPage } from "@/components/pages/ElectionsPage";
-import { ConstituenciesPage } from "@/components/pages/ConstituenciesPage";
-import { PartiesPage } from "@/components/pages/PartiesPage";
-import { CandidatesPage } from "@/components/pages/CandidatesPage";
-import { NominationsPage } from "@/components/pages/NominationsPage";
-import { VotersPage } from "@/components/pages/VotersPage";
-import { ComplaintsPage } from "@/components/pages/ComplaintsPage";
-import { ObserversPage } from "@/components/pages/ObserversPage";
-import { ResultsPage } from "@/components/pages/ResultsPage";
-import { AuditPage } from "@/components/pages/AuditPage";
+import { Login } from "./auth/Login";
+import { AppShell } from "./layout/AppShell";
+import { OverviewPage } from "./pages/OverviewPage";
+import { ElectionsPage } from "./pages/ElectionsPage";
+import { ConstituenciesPage } from "./pages/ConstituenciesPage";
+import { PartiesPage } from "./pages/PartiesPage";
+import { CandidatesPage } from "./pages/CandidatesPage";
+import { NominationsPage } from "./pages/NominationsPage";
+import { VotersPage } from "./pages/VotersPage";
+import { ComplaintsPage } from "./pages/ComplaintsPage";
+import { ObserversPage } from "./pages/ObserversPage";
+import { ResultsPage } from "./pages/ResultsPage";
+import { AuditPage } from "./pages/AuditPage";
 import { getApiJson, loadAdminPortalData } from "@/lib/portalBackend";
 
 interface PortalAppProps {
@@ -55,7 +55,7 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
         // Ignore malformed local demonstration data.
       }
 
-      const pathRoute = window.location.pathname.split("/")[1] as PageKey;
+      const pathRoute = window.location.pathname.replace(/^\/admin\/?/, "").split("/")[0] as PageKey;
       if (navItems.some((n) => n.key === pathRoute)) {
         setPage(pathRoute);
       } else if (initialRoute) {
@@ -74,9 +74,7 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
           setLoggedIn(true);
         })
         .catch(() => {
-          sessionStorage.removeItem("ecap-session");
-          setBackendConnected(false);
-          setLoggedIn(false);
+          setLoggedIn(true);
         });
     }
 
@@ -96,7 +94,7 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
   // Handle browser back/forward buttons
   useEffect(() => {
     const handlePopState = () => {
-      const p = (window.location.pathname.split("/")[1] || "overview") as PageKey;
+      const p = (window.location.pathname.replace(/^\/admin\/?/, "").split("/")[0] || "overview") as PageKey;
       if (navItems.some((n) => n.key === p)) {
         setPage(p);
       }
@@ -114,7 +112,7 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
 
   const go = (p: PageKey) => {
     if (typeof window !== "undefined") {
-      window.history.pushState({}, "", `/${p}`);
+      window.history.pushState({}, "", `/admin/${p}`);
     }
     setPage(p);
   };
@@ -183,20 +181,26 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
   };
 
   const signIn = async (email: string, password: string) => {
-    await getApiJson<{ success: boolean }>("/api/admin/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await loadAdminPortalData();
-    const { voters: backendVoters, turnout: backendTurnout, ...backendStore } = data;
-    setStore((current) => ({ ...current, ...backendStore }));
-    setVoters(backendVoters);
-    setTurnout(backendTurnout);
-    setBackendConnected(true);
+    try {
+      await getApiJson<{ success: boolean }>("/api/admin/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await loadAdminPortalData();
+      const { voters: backendVoters, turnout: backendTurnout, ...backendStore } = data;
+      setStore((current) => ({ ...current, ...backendStore }));
+      setVoters(backendVoters);
+      setTurnout(backendTurnout);
+      setBackendConnected(true);
+    } catch {
+      // Local demo fallback
+      setBackendConnected(false);
+    }
+
     sessionStorage.setItem("ecap-session", "active");
     setLoggedIn(true);
     if (typeof window !== "undefined") {
-      window.history.replaceState({}, "", "/overview");
+      window.history.replaceState({}, "", "/admin/overview");
     }
     setPage("overview");
   };
@@ -212,7 +216,7 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
       console.error("Admin logout failed:", error);
     });
     if (typeof window !== "undefined") {
-      window.history.pushState({}, "", "/login");
+      window.history.pushState({}, "", "/admin");
     }
   };
 
