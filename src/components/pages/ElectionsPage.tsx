@@ -12,6 +12,12 @@ import { EntityForm } from "@/components/forms/EntityForm";
 import { Detail } from "@/components/ui/Detail";
 import { Confirm } from "@/components/ui/Confirm";
 import { formatDate, nextId } from "@/lib/formatters";
+import {
+  ApiElection,
+  getApiJson,
+  mapApiElection,
+  mapApiElections,
+} from "@/lib/portalBackend";
 
 export function ElectionsPage({
   store,
@@ -45,20 +51,65 @@ export function ElectionsPage({
       label: "Election type",
       type: "select",
       required: true,
-      options: ["General", "State Assembly", "Local Body", "By-election"],
+      options: backendConnected
+        ? ["General", "State Assembly", "By-election"]
+        : ["General", "State Assembly", "Local Body", "By-election"],
     },
     { key: "start", label: "Start date", type: "date", required: true },
     { key: "end", label: "End date", type: "date", required: true },
-    {
-      key: "status",
-      label: "Status",
-      type: "select",
-      required: true,
-      options: ["SCHEDULED", "ONGOING", "COMPLETED"],
-    },
+    ...(!backendConnected
+      ? [{
+          key: "status",
+          label: "Status",
+          type: "select" as const,
+          required: true,
+          options: ["SCHEDULED", "ONGOING", "COMPLETED"],
+        }]
+      : []),
   ];
 
-  const save = (value: Record<string, unknown>) => {
+  const save = async (value: Record<string, unknown>) => {
+    if (backendConnected) {
+      const typeToDb: Record<string, string> = {
+        General: "GENERAL",
+        "By-election": "BY_ELECTION",
+        "State Assembly": "STATE",
+      };
+      const payload = {
+        electionName: String(value.name),
+        electionType: typeToDb[String(value.type)],
+        startDate: String(value.start),
+        endDate: String(value.end),
+      };
+      try {
+        const wasNew = form === "new";
+        const url = wasNew
+          ? "/api/admin/elections"
+          : `/api/admin/elections/${encodeURIComponent((form as Election).id)}`;
+        await getApiJson<ApiElection>(url, {
+          method: wasNew ? "POST" : "PATCH",
+          body: JSON.stringify(payload),
+        });
+        const records = await getApiJson<ApiElection[]>("/api/admin/elections");
+        const elections = mapApiElections(records);
+        elections.forEach((election) => {
+          if (store.elections.some((existing) => existing.id === election.id)) {
+            update("elections", election as never, "Election updated");
+          } else {
+            create("elections", election as never, "Election created");
+          }
+        });
+        setForm(null);
+        notify(wasNew ? "Election created" : "Election updated");
+      } catch (error) {
+        notify(
+          error instanceof Error ? error.message : "Election could not be saved",
+          "error"
+        );
+      }
+      return;
+    }
+
     const item = {
       ...value,
       id: form === "new" ? nextId("EL") : (form as Election).id,
@@ -72,7 +123,7 @@ export function ElectionsPage({
     setForm(null);
   };
 
-  const advance = (row: Election) => {
+  const advance = async (row: Election) => {
     const next =
       row.status === "SCHEDULED"
         ? "ONGOING"
@@ -84,12 +135,25 @@ export function ElectionsPage({
       return notify("Completed elections cannot be advanced", "error");
     }
 
-    update(
-      "elections",
-      { ...row, status: next } as never,
-      `Election status changed to ${next}`
-    );
-    setConfirm(null);
+    if (backendConnected) {
+      try {
+        const changed = await getApiJson<ApiElection>(
+          `/api/admin/elections/${encodeURIComponent(row.id)}`,
+          { method: "PATCH", body: JSON.stringify({ status: next }) }
+        );
+        update("elections", mapApiElection(changed) as never, `Election status changed to ${next}`);
+        setConfirm(null);
+      } catch (error) {
+        notify(error instanceof Error ? error.message : "Election status could not be changed", "error");
+      }
+    } else {
+      update(
+        "elections",
+        { ...row, status: next } as never,
+        `Election status changed to ${next}`
+      );
+      setConfirm(null);
+    }
   };
 
   return (
@@ -98,15 +162,13 @@ export function ElectionsPage({
         title="Elections"
         description={
           backendConnected
-            ? "Only ongoing elections are exposed by the backend; election management is not available."
+            ? "Elections are stored in Supabase; only scheduled elections can be edited."
             : "Create, schedule and monitor electoral events."
         }
         action={
-          !backendConnected && (
-            <Button onClick={() => setForm("new")}>
-              <Icon name="plus" size={16} /> Create election
-            </Button>
-          )
+          <Button onClick={() => setForm("new")}>
+            <Icon name="plus" size={16} /> Create election
+          </Button>
         }
       />
 
@@ -117,7 +179,9 @@ export function ElectionsPage({
           onChange={(e) => setType(e.target.value)}
         >
           <option value="">All election types</option>
-          {["General", "State Assembly", "Local Body", "By-election"].map(
+          {(backendConnected
+            ? ["General", "State Assembly", "By-election"]
+            : ["General", "State Assembly", "Local Body", "By-election"]).map(
             (x) => (
               <option key={x} value={x}>
                 {x}
@@ -161,9 +225,9 @@ export function ElectionsPage({
           },
         ]}
         onView={setView}
-        onEdit={!backendConnected ? (r) => setForm(r) : undefined}
-        onDelete={!backendConnected ? (r) => setConfirm({ row: r, action: "delete" }) : undefined}
-        extraAction={!backendConnected ? (r) =>
+        onEdit={(r) => setForm(r)}
+        onDelete={(r) => setConfirm({ row: r, action: "delete" })}
+        extraAction={(r) =>
           r.status !== "COMPLETED" && (
             <button
               type="button"
@@ -175,7 +239,7 @@ export function ElectionsPage({
               Advance status
             </button>
           )
-        : undefined}
+        }
       />
 
       {form && (
@@ -200,7 +264,7 @@ export function ElectionsPage({
             }
             return errs;
           }}
-          onSave={save}
+          onSave={(value) => void save(value)}
           onClose={() => setForm(null)}
         />
       )}
@@ -245,10 +309,23 @@ export function ElectionsPage({
           onClose={() => setConfirm(null)}
           onConfirm={() => {
             if (confirm.action === "delete") {
-              remove("elections", confirm.row.id, "Election deleted");
-              setConfirm(null);
+              if (backendConnected) {
+                void getApiJson<{ success: boolean }>(
+                  `/api/admin/elections/${encodeURIComponent(confirm.row.id)}`,
+                  { method: "DELETE" }
+                ).then(() => {
+                  remove("elections", confirm.row.id, "Election deleted");
+                  setConfirm(null);
+                  notify("Election deleted");
+                }).catch((error: unknown) => {
+                  notify(error instanceof Error ? error.message : "Election could not be deleted", "error");
+                });
+              } else {
+                remove("elections", confirm.row.id, "Election deleted");
+                setConfirm(null);
+              }
             } else {
-              advance(confirm.row);
+              void advance(confirm.row);
             }
           }}
         />

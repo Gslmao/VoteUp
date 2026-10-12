@@ -3,18 +3,31 @@ import type {
   Complaint,
   Constituency,
   Election,
+  Nomination,
+  Observer,
   Party,
   Result,
   Voter,
+  Audit,
 } from '@/types/portal';
 
-type ApiElection = {
+export type ApiElection = {
   election_id: number;
   election_name: string;
   election_type: string;
   start_date: string;
   end_date: string;
   status: Election['status'];
+};
+
+type ApiNomination = {
+  nomination_id: number;
+  candidate_id: number;
+  candidate_name: string;
+  constituency_name: string;
+  election_name: string;
+  filed_date: string;
+  status: Nomination['status'];
 };
 
 type ApiParty = {
@@ -26,6 +39,7 @@ type ApiParty = {
 
 type ApiConstituency = {
   constituency_id: number;
+  state_id: number;
   name: string;
   total_registered_voters: number | null;
   states: { state_name: string } | null;
@@ -49,6 +63,24 @@ type ApiComplaint = {
   status: Complaint['status'];
 };
 
+type ApiObserver = {
+  observer_id: number;
+  full_name: string;
+  constituency_id: number | null;
+  election_id: number | null;
+  constituencies: { name: string } | { name: string }[] | null;
+  elections: { election_name: string } | { election_name: string }[] | null;
+};
+
+export type ApiAudit = {
+  log_id: number;
+  table_name: string;
+  operation: string;
+  changed_at: string;
+  row_id: number | null;
+  details: Record<string, unknown> | null;
+};
+
 type ApiTurnout = {
   votes_cast: number | string;
   total_registered_voters: number | string | null;
@@ -68,6 +100,21 @@ const electionTypeLabels: Record<string, string> = {
   BY_ELECTION: "By-election",
   STATE: "State Assembly",
 };
+
+export function mapApiElection(election: ApiElection): Election {
+  return {
+    id: String(election.election_id),
+    name: election.election_name,
+    type: electionTypeLabels[election.election_type] ?? election.election_type,
+    start: election.start_date,
+    end: election.end_date,
+    status: election.status,
+  };
+}
+
+export function mapApiElections(records: ApiElection[]): Election[] {
+  return records.map(mapApiElection);
+}
 
 export async function getApiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -94,23 +141,28 @@ export async function getApiJson<T>(path: string, init?: RequestInit): Promise<T
 }
 
 export async function loadAdminPortalData() {
-  const [apiElections, apiParties, apiConstituencies, apiCandidates, apiComplaints] =
+  const [
+    apiElections,
+    apiParties,
+    apiConstituencies,
+    apiCandidates,
+    apiComplaints,
+    apiNominations,
+    apiObservers,
+    apiAudits,
+  ] =
     await Promise.all([
-      getApiJson<ApiElection[]>('/api/elections'),
+      getApiJson<ApiElection[]>('/api/admin/elections'),
       getApiJson<ApiParty[]>('/api/parties'),
       getApiJson<ApiConstituency[]>('/api/constituencies'),
       getApiJson<ApiCandidate[]>('/api/candidates'),
       getApiJson<ApiComplaint[]>('/api/admin/complaints'),
+      getApiJson<ApiNomination[]>('/api/admin/nominations'),
+      getApiJson<ApiObserver[]>('/api/admin/reference/observers'),
+      getApiJson<ApiAudit[]>('/api/admin/audit'),
     ]);
 
-  const elections: Election[] = apiElections.map((election) => ({
-    id: String(election.election_id),
-    name: election.election_name,
-    type: electionTypeLabels[election.election_type] ?? election.election_type,
-    start: election.start_date,
-    end: election.end_date,
-    status: election.status,
-  }));
+  const elections = mapApiElections(apiElections);
   const electionNames = new Map(
     elections.map((election) => [Number(election.id), election.name])
   );
@@ -125,12 +177,27 @@ export async function loadAdminPortalData() {
     id: String(constituency.constituency_id),
     name: constituency.name,
     state: constituency.states?.state_name ?? 'Unknown',
+    stateId: constituency.state_id,
     voters: constituency.total_registered_voters ?? 0,
   }));
   const constituencyNames = new Map(
     constituencies.map((constituency) => [
       Number(constituency.id),
       constituency.name,
+    ])
+  );
+  const nominations: Nomination[] = apiNominations.map((nomination) => ({
+    id: String(nomination.nomination_id),
+    candidate: nomination.candidate_name,
+    election: nomination.election_name,
+    constituency: nomination.constituency_name,
+    filed: nomination.filed_date,
+    status: nomination.status,
+  }));
+  const candidateStatuses = new Map(
+    apiNominations.map((nomination) => [
+      String(nomination.candidate_id),
+      nomination.status,
     ])
   );
   const candidates: Candidate[] = apiCandidates.map((candidate) => ({
@@ -140,6 +207,7 @@ export async function loadAdminPortalData() {
     party: candidate.party_name ?? 'Independent',
     constituency: constituencyNames.get(candidate.constituency_id) ?? 'Unknown',
     assets: Number(candidate.assets_declared_inr ?? 0),
+    status: candidateStatuses.get(String(candidate.candidate_id)),
   }));
   const complaints: Complaint[] = apiComplaints.map((complaint) => ({
     id: String(complaint.complaint_id),
@@ -151,16 +219,34 @@ export async function loadAdminPortalData() {
     description: complaint.description,
     status: complaint.status,
   }));
+  const observers: Observer[] = apiObservers.map((observer) => {
+    const constituency = Array.isArray(observer.constituencies)
+      ? observer.constituencies[0]
+      : observer.constituencies;
+    const election = Array.isArray(observer.elections)
+      ? observer.elections[0]
+      : observer.elections;
+    return {
+      id: String(observer.observer_id),
+      name: observer.full_name,
+      constituency: constituency?.name ?? 'Unassigned',
+      constituencyId: observer.constituency_id ?? undefined,
+      election: election?.election_name ?? 'Unassigned',
+      electionId: observer.election_id ?? undefined,
+    };
+  });
+  const audits = mapApiAudits(apiAudits);
 
-  const activeElectionId = elections[0]?.id;
-  const voterPath = activeElectionId
-    ? `/api/admin/voters?electionId=${encodeURIComponent(activeElectionId)}`
+  const voterElectionId = elections[0]?.id;
+  const activeElection = elections.find((election) => election.status === 'ONGOING');
+  const voterPath = voterElectionId
+    ? `/api/admin/voters?electionId=${encodeURIComponent(voterElectionId)}`
     : '/api/admin/voters';
   const [apiVoters, turnoutRows] = await Promise.all([
     getApiJson<ApiVoter[]>(voterPath),
-    activeElectionId
+    activeElection
       ? getApiJson<ApiTurnout[]>(
-          `/api/elections/${encodeURIComponent(activeElectionId)}/turnout`
+          `/api/elections/${encodeURIComponent(activeElection.id)}/turnout`
         )
       : Promise.resolve([]),
   ]);
@@ -179,11 +265,38 @@ export async function loadAdminPortalData() {
           votesCast,
           registeredVoters,
           percentage: (votesCast / registeredVoters) * 100,
-          electionName: elections[0].name,
+          electionName: activeElection?.name ?? '',
         }
       : null;
 
-  return { elections, parties, constituencies, candidates, complaints, voters, turnout };
+  return {
+    elections,
+    parties,
+    constituencies,
+    candidates,
+    nominations,
+    complaints,
+    observers,
+    audits,
+    voters,
+    turnout,
+  };
+}
+
+export function mapApiAudits(records: ApiAudit[]): Audit[] {
+  return records.map((audit) => ({
+    id: String(audit.log_id),
+    timestamp: audit.changed_at,
+    entity: audit.table_name,
+    operation: audit.operation,
+    reference: audit.row_id === null ? 'n/a' : String(audit.row_id),
+    details: audit.details
+      ? Object.entries(audit.details)
+          .filter(([key]) => key !== 'admin_id')
+          .map(([key, value]) => `${key}: ${String(value)}`)
+          .join(', ')
+      : '',
+  }));
 }
 
 export function mapApiVoters(

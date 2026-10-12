@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   }
 }
 
-async function postHandler(request: Request) {
+async function postHandler(request: Request, admin: { adminId: number }) {
   try {
     const body = await request.json();
     const parsed = createCandidateSchema.safeParse(body);
@@ -34,7 +34,7 @@ async function postHandler(request: Request) {
       );
     }
     
-    const result = await createCandidate(parsed.data);
+    const result = await createCandidate(admin.adminId, parsed.data);
     return NextResponse.json({ success: true, candidate: result });
   } catch (err: unknown) {
     console.error('Error creating candidate:', err);
@@ -42,4 +42,6 @@ async function postHandler(request: Request) {
   }
 }
 
-export const POST = withAdminAuth(async (request) => postHandler(request));
+export const POST = withAdminAuth(async (request, admin) =>
+  postHandler(request, admin)
+);

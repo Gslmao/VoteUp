@@ -27,13 +27,13 @@ src/
 │   │   └── Login.tsx           # Backend administrator login with credential visibility
 │   ├── pages/
 │   │   ├── OverviewPage.tsx    # Backend metrics, complaints and live turnout
-│   │   ├── ElectionsPage.tsx   # Read-only list of ongoing backend elections
+│   │   ├── ElectionsPage.tsx   # Backend election management
 │   │   ├── SimpleDirectory.tsx # Reusable directory component for tabular entities
 │   │   ├── ConstituenciesPage.tsx
-│   │   ├── PartiesPage.tsx     # Read-only backend party directory
-│   │   ├── CandidatesPage.tsx  # Backend candidate directory and creation form
+│   │   ├── PartiesPage.tsx     # Backend party CRUD
+│   │   ├── CandidatesPage.tsx  # Backend candidate CRUD
 │   │   ├── NominationsPage.tsx # Nomination status review and candidate synchronization
-│   │   ├── VotersPage.tsx      # In-memory voter directory with privacy notice
+│   │   ├── VotersPage.tsx      # Backend voter directory with 25-row pagination
 │   │   ├── ComplaintsPage.tsx  # Complaint tracking and investigation resolution
 │   │   ├── ObserversPage.tsx   # Observer assignment directory
 │   │   ├── ResultsPage.tsx     # Provisional backend results and leaderboard
@@ -50,25 +50,30 @@ src/
 
 The admin login form calls `POST /api/admin/login`; the server sets an HTTP-only
 admin cookie. The browser's `ecap-session` value is only a UI marker, not an
-authentication credential. On login and page reload, the portal loads backend
-elections, parties, constituencies, candidates and complaints. Results and
-ongoing-election turnout are loaded from their API routes. Candidate creation
-calls `POST /api/candidates`; the database must have the
-`create_candidate_with_assets_api` RPC deployed first. For an existing database,
-apply `sql/migrations/20260816_candidate_assets_rpc.sql`; do not rerun the
-fresh-install `sql/schema.sql`.
+authentication credential. Admin startup loads backend elections, parties,
+constituencies, candidates, nominations, voters, complaints, observer
+assignments, audit history and turnout/results as available.
 
-Backend-backed election, party and constituency directories are read-only.
-Candidate creation is enabled, but candidate editing/deletion is not. Complaints
-can be listed, but status updates and filing dates are unavailable. The
-backend currently exposes only ongoing elections, so election lifecycle
-management and scheduled/completed election choices are not integrated.
+Voter CRUD, election management, candidate CRUD, nomination decisions,
+complaint filing/status updates, party CRUD, constituency CRUD, and observer
+assignment CRUD persist through authenticated API routes and transactional
+Supabase functions. Mutations append non-PII audit entries. Voter participation
+uses `has_voted` only; edits are blocked after participation, and deletion is
+blocked by related records. The voter page displays 25 records per page.
+Election/constituency/party reads intended for public voter flows remain
+available from their existing public read routes.
 
-The voter directory now loads from an admin-authenticated endpoint, supports
-registration and edits, and displays participation for the selected election
-from `has_voted` only. Voter deletion is disabled because other records can
-reference voters. Voter data is not stored in localStorage. Nomination review,
-observer assignments and admin audit history remain local demonstration data;
-their forms do not write to the backend. Party recognition metadata, complaint
-filed timestamps/status updates, and an administrative audit-list endpoint are
-also backend gaps.
+For existing databases, apply `sql/migrations/20260816_candidate_assets_rpc.sql`
+if not already deployed, followed by the `sql/migrations/20261013_*.sql`
+admin-write and audit migrations. Apply migrations to the intended development
+Supabase project, not by rerunning the fresh-install `sql/schema.sql` against a
+populated database. No SQL migration has been applied as part of this frontend
+work.
+
+Remaining data-model limitations: party recognition metadata and complaint
+filed timestamps do not exist in the schema. A nomination is not tied to an
+election in the current table design, so the admin listing's election
+association is ambiguous when a candidate has filings across multiple
+elections. Audit history is limited to the entries recorded by database
+functions and the vote trigger; it is not a complete database-wide audit
+stream.

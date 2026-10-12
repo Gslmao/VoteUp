@@ -23,6 +23,7 @@ export interface DirectoryConfig<T extends { id: string; name: string }> {
   key: "constituencies" | "candidates" | "observers" | "parties";
   singular: string;
   fields: FieldConfig[];
+  editFields?: FieldConfig[];
   columns: Column<T>[];
   initial: Record<string, unknown>;
   filterKey?: string;
@@ -34,6 +35,8 @@ export interface DirectoryConfig<T extends { id: string; name: string }> {
   createOnly?: boolean;
   backendNotice?: string;
   onCreate?: (value: Record<string, unknown>) => Promise<T>;
+  onUpdate?: (value: Record<string, unknown>, existing: T) => Promise<T>;
+  onDelete?: (record: T) => Promise<void>;
 }
 
 interface SimpleDirectoryProps<T extends { id: string; name: string }> {
@@ -99,7 +102,21 @@ export function SimpleDirectory<T extends { id: string; name: string }>({
       }
       create(config.key, item as never, `${config.singular} created`);
     } else {
-      item = { ...value, id: (form as T).id } as unknown as T;
+      if (config.onUpdate) {
+        try {
+          item = await config.onUpdate(value, form as T);
+        } catch (error) {
+          notify(
+            error instanceof Error
+              ? error.message
+              : `${config.singular} could not be updated`,
+            "error"
+          );
+          return;
+        }
+      } else {
+        item = { ...value, id: (form as T).id } as unknown as T;
+      }
       update(config.key, item as never, `${config.singular} updated`);
     }
     setForm(null);
@@ -165,7 +182,11 @@ export function SimpleDirectory<T extends { id: string; name: string }>({
       {form && (
         <EntityForm
           title={`${form === "new" ? "Add" : "Edit"} ${config.singular.toLowerCase()}`}
-          fields={config.fields}
+          fields={
+            form !== "new" && config.editFields
+              ? config.editFields
+              : config.fields
+          }
           initial={form === "new" ? config.initial : (form as unknown as Record<string, unknown>)}
           onSave={save}
           onClose={() => setForm(null)}
@@ -194,11 +215,31 @@ export function SimpleDirectory<T extends { id: string; name: string }>({
       {deleting && (
         <Confirm
           title={`Delete ${config.singular.toLowerCase()}?`}
-          message={`Remove ${deleting.name}? This action affects local demonstration data only.`}
+          message={
+            config.onDelete
+              ? `Permanently remove ${deleting.name}?`
+              : `Remove ${deleting.name}? This action affects local demonstration data only.`
+          }
           onClose={() => setDeleting(null)}
           onConfirm={() => {
-            remove(config.key, deleting.id, `${config.singular} deleted`);
-            setDeleting(null);
+            const record = deleting;
+            if (config.onDelete) {
+              void config.onDelete(record).then(() => {
+                remove(config.key, record.id, `${config.singular} deleted`);
+                notify(`${config.singular} deleted`);
+                setDeleting(null);
+              }).catch((error: unknown) => {
+                notify(
+                  error instanceof Error
+                    ? error.message
+                    : `${config.singular} could not be deleted`,
+                  "error"
+                );
+              });
+            } else {
+              remove(config.key, record.id, `${config.singular} deleted`);
+              setDeleting(null);
+            }
           }}
         />
       )}

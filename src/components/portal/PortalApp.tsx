@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { EntityPageProps, PageKey, Store, ToastState, Voter } from "@/types/portal";
 import { navItems, seedStore, seedVoters } from "@/data/mockData";
 import { nextId } from "@/lib/formatters";
@@ -119,9 +119,9 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
     setPage(p);
   };
 
-  const notify = (text: string, tone: "success" | "error" = "success") => {
+  const notify = useCallback((text: string, tone: "success" | "error" = "success") => {
     setToast({ text, tone });
-  };
+  }, []);
 
   const addAudit = (
     entity: string,
@@ -151,7 +151,7 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
       [key]: [item, ...s[key]],
     }));
     const record = item as { id: string };
-    if (!(backendConnected && key === "candidates")) {
+    if (!backendConnected) {
       addAudit(key.slice(0, -1), "CREATE", record.id, detail);
     }
     notify(detail);
@@ -165,7 +165,9 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
         r.id === record.id ? item : r
       ),
     }));
-    addAudit(key.slice(0, -1), "UPDATE", record.id, detail);
+    if (!backendConnected) {
+      addAudit(key.slice(0, -1), "UPDATE", record.id, detail);
+    }
     notify(detail);
   };
 
@@ -174,7 +176,9 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
       ...s,
       [key]: (s[key] as Array<{ id: string }>).filter((r) => r.id !== id),
     }));
-    addAudit(key.slice(0, -1), "DELETE", id, detail);
+    if (!backendConnected) {
+      addAudit(key.slice(0, -1), "DELETE", id, detail);
+    }
     notify(detail);
   };
 
@@ -259,7 +263,9 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
       {page === "results" && (
         <ResultsPage store={store} backendConnected={backendConnected} />
       )}
-      {page === "audit" && <AuditPage store={store} />}
+      {page === "audit" && (
+        <AuditPage store={store} backendConnected={backendConnected} notify={notify} />
+      )}
     </AppShell>
   );
 }

@@ -17,6 +17,7 @@ export type Constituency = {
   id: string;
   name: string;
   state: string;
+  stateId?: number;
   voters: number;
 };
 
@@ -61,7 +62,9 @@ export type Observer = {
   id: string;
   name: string;
   constituency: string;
+  constituencyId?: number;
   election: string;
+  electionId?: number;
 };
 
 export type Audit = {
@@ -122,7 +125,7 @@ export type FieldConfig = {
   label: string;
   type?: "text" | "date" | "number" | "select" | "textarea";
   required?: boolean;
-  options?: string[];
+  options?: (string | { label: string; value: string })[];
 };
 
 export type Column<T> = {

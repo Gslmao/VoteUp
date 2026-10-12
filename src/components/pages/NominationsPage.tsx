@@ -9,11 +9,13 @@ import { Badge } from "@/components/ui/Badge";
 import { Detail } from "@/components/ui/Detail";
 import { Confirm } from "@/components/ui/Confirm";
 import { formatDate } from "@/lib/formatters";
+import { getApiJson } from "@/lib/portalBackend";
 
 export function NominationsPage({
   store,
   update,
   notify,
+  backendConnected,
 }: EntityPageProps) {
   const [search, setSearch] = useState("");
   const [election, setElection] = useState("");
@@ -40,9 +42,29 @@ export function NominationsPage({
       ? ["WITHDRAWN"]
       : [];
 
-  const apply = () => {
+  const apply = async () => {
     if (!change || !allowed(change.row.status).includes(change.status)) {
       return notify("That nomination transition is not permitted", "error");
+    }
+
+    if (backendConnected) {
+      try {
+        await getApiJson<unknown>(
+          `/api/admin/nominations/${encodeURIComponent(change.row.id)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ status: change.status }),
+          }
+        );
+      } catch (error) {
+        notify(
+          error instanceof Error
+            ? error.message
+            : "Nomination status could not be updated",
+          "error"
+        );
+        return;
+      }
     }
 
     update(
@@ -68,7 +90,11 @@ export function NominationsPage({
     <>
       <PageHeader
         title="Nominations"
-        description="Review nomination filings and record decisions."
+        description={
+          backendConnected
+            ? "Nomination decisions are persisted with database-enforced status transitions."
+            : "Review nomination filings and record decisions."
+        }
       />
 
       <Filters search={search} setSearch={setSearch}>
@@ -146,7 +172,7 @@ export function NominationsPage({
           title="Confirm nomination decision"
           message={`Change ${change.row.id} from ${change.row.status} to ${change.status}?`}
           onClose={() => setChange(null)}
-          onConfirm={apply}
+          onConfirm={() => void apply()}
         />
       )}
     </>

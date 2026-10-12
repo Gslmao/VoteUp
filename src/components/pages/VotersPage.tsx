@@ -200,6 +200,38 @@ export function VotersPage({
     setForm(null);
   };
 
+  const removeVoter = async (voter: Voter) => {
+    if (backendConnected) {
+      try {
+        await getApiJson<{ success: boolean }>(
+          `/api/admin/voters/${encodeURIComponent(voter.id)}`,
+          { method: "DELETE" }
+        );
+        setVoters((current) =>
+          current.filter((record) => record.id !== voter.id)
+        );
+        notify("Voter deleted");
+      } catch (error) {
+        notify(
+          error instanceof Error ? error.message : "Voter could not be deleted",
+          "error"
+        );
+      }
+      setDeleting(null);
+      return;
+    }
+
+    setVoters((current) => current.filter((record) => record.id !== voter.id));
+    addAudit(
+      "Voter",
+      "DELETE",
+      voter.id,
+      "Voter directory record removed"
+    );
+    notify("Voter record removed");
+    setDeleting(null);
+  };
+
   return (
     <>
       <PageHeader
@@ -221,7 +253,7 @@ export function VotersPage({
         <span>
           <strong>Privacy notice:</strong>{" "}
           {backendConnected
-            ? "EPIC and date-of-birth data are sensitive and visible only to authenticated administrators. Participation status comes from has_voted; ballot choices remain anonymous and are never queried here. Deletion is disabled to preserve election and complaint records."
+            ? "EPIC and date-of-birth data are sensitive and visible only to authenticated administrators. Participation status comes from has_voted; ballot choices remain anonymous and are never queried here. Voters with participation records cannot be deleted."
             : "Voter records are held in memory for this session only. Participation status does not indicate a ballot choice."}
         </span>
       </div>
@@ -293,7 +325,7 @@ export function VotersPage({
         pageSize={25}
         onView={setView}
         onEdit={(voter) => setForm(voter)}
-        onDelete={!backendConnected ? setDeleting : undefined}
+        onDelete={setDeleting}
       />
 
       {form && (
@@ -327,21 +359,13 @@ export function VotersPage({
       {deleting && (
         <Confirm
           title="Remove voter record?"
-          message={`Remove the local record for ${deleting.name}?`}
+          message={
+            backendConnected
+              ? `Permanently remove ${deleting.name}? This is unavailable if participation records reference the voter.`
+              : `Remove the local record for ${deleting.name}?`
+          }
           onClose={() => setDeleting(null)}
-          onConfirm={() => {
-            setVoters((current) =>
-              current.filter((voter) => voter.id !== deleting.id)
-            );
-            addAudit(
-              "Voter",
-              "DELETE",
-              deleting.id,
-              "Voter directory record removed"
-            );
-            notify("Voter record removed");
-            setDeleting(null);
-          }}
+          onConfirm={() => void removeVoter(deleting)}
         />
       )}
     </>

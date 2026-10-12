@@ -68,8 +68,11 @@ export function EntityForm({
                 >
                   <option value="">Select</option>
                   {field.options?.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
+                    <option
+                      key={typeof o === "string" ? o : o.value}
+                      value={typeof o === "string" ? o : o.value}
+                    >
+                      {typeof o === "string" ? o : o.label}
                     </option>
                   ))}
                 </select>

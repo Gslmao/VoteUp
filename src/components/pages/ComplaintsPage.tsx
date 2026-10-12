@@ -9,8 +9,14 @@ import { Badge } from "@/components/ui/Badge";
 import { Detail } from "@/components/ui/Detail";
 import { Confirm } from "@/components/ui/Confirm";
 import { formatDate } from "@/lib/formatters";
+import { getApiJson } from "@/lib/portalBackend";
 
-export function ComplaintsPage({ store, update, backendConnected }: EntityPageProps) {
+export function ComplaintsPage({
+  store,
+  update,
+  notify,
+  backendConnected,
+}: EntityPageProps) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [constituency, setConstituency] = useState("");
@@ -35,7 +41,7 @@ export function ComplaintsPage({ store, update, backendConnected }: EntityPagePr
         title="Complaints"
         description={
           backendConnected
-            ? "Complaints are loaded from the backend. Status updates and filed dates are not supported."
+            ? "Complaints and status updates are persisted in Supabase. Filed dates are not available."
             : "Track, investigate and resolve election-related complaints."
         }
       />
@@ -90,7 +96,7 @@ export function ComplaintsPage({ store, update, backendConnected }: EntityPagePr
           },
         ]}
         onView={setView}
-        extraAction={!backendConnected ? (r) =>
+        extraAction={(r) =>
           ["OPEN", "INVESTIGATING", "RESOLVED", "DISMISSED"]
             .filter((s) => s !== r.status)
             .map((s) => (
@@ -105,7 +111,7 @@ export function ComplaintsPage({ store, update, backendConnected }: EntityPagePr
                 Mark {s.toLowerCase()}
               </button>
             ))
-        : undefined}
+        }
       />
 
       {view && (
@@ -122,6 +128,30 @@ export function ComplaintsPage({ store, update, backendConnected }: EntityPagePr
           message={`Change ${change.row.id} from ${change.row.status} to ${change.status}?`}
           onClose={() => setChange(null)}
           onConfirm={() => {
+            if (backendConnected) {
+              void getApiJson<unknown>(
+                `/api/admin/complaints/${encodeURIComponent(change.row.id)}`,
+                {
+                  method: "PATCH",
+                  body: JSON.stringify({ status: change.status }),
+                }
+              ).then(() => {
+                update(
+                  "complaints",
+                  { ...change.row, status: change.status } as never,
+                  `Complaint changed to ${change.status}`
+                );
+                setChange(null);
+              }).catch((error: unknown) => {
+                notify(
+                  error instanceof Error
+                    ? error.message
+                    : "Complaint status could not be changed",
+                  "error"
+                );
+              });
+              return;
+            }
             update(
               "complaints",
               { ...change.row, status: change.status } as never,

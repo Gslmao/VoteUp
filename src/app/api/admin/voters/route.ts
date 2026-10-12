@@ -34,7 +34,7 @@ async function getHandler(request: Request) {
   }
 }
 
-async function postHandler(request: Request) {
+async function postHandler(request: Request, admin: { adminId: number }) {
   try {
     const body = await request.json();
     const parsed = createVoterSchema.safeParse(body);
@@ -45,7 +45,7 @@ async function postHandler(request: Request) {
       );
     }
 
-    const voter = await createVoter({
+    const voter = await createVoter(admin.adminId, {
       epicNumber: parsed.data.epicNumber,
       fullName: parsed.data.fullName,
       dob: parsed.data.dob,
@@ -53,16 +53,16 @@ async function postHandler(request: Request) {
     });
     return NextResponse.json({ voter }, { status: 201 });
   } catch (error: unknown) {
-    if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === '23505'
-    ) {
-      return NextResponse.json(
-        { error: 'A voter with this EPIC number already exists' },
-        { status: 409 }
-      );
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+      if (error.code === '23505') {
+        return NextResponse.json(
+          { error: 'A voter with this EPIC number already exists' },
+          { status: 409 }
+        );
+      }
+      if (error.code === '23503') {
+        return NextResponse.json({ error: 'Invalid constituency' }, { status: 400 });
+      }
     }
     console.error('Error creating voter:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -70,4 +70,6 @@ async function postHandler(request: Request) {
 }
 
 export const GET = withAdminAuth(async (request) => getHandler(request));
-export const POST = withAdminAuth(async (request) => postHandler(request));
+export const POST = withAdminAuth(async (request, admin) =>
+  postHandler(request, admin)
+);

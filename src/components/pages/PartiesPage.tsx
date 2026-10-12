@@ -4,6 +4,7 @@ import React from "react";
 import { EntityPageProps, Party } from "@/types/portal";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/formatters";
+import { getApiJson } from "@/lib/portalBackend";
 import { DirectoryConfig, SimpleDirectory } from "./SimpleDirectory";
 
 export function PartiesPage({
@@ -12,26 +13,22 @@ export function PartiesPage({
   update,
   remove,
   notify,
+  backendConnected,
 }: EntityPageProps) {
-  const recognitionOptions = [
-    "National",
-    "State",
-    "Registered (Unrecognised)",
-  ];
-
   const partyConfig: DirectoryConfig<Party> = {
     title: "Political Parties",
     description:
       "Political parties and symbols from the backend. Recognition metadata is unavailable.",
     key: "parties",
     singular: "Party",
-    readOnly: true,
-    backendNotice: "Management is read-only because no party write API exists.",
+    readOnly: !backendConnected,
+    backendNotice: backendConnected
+      ? "Party changes are persisted to Supabase."
+      : "Backend management is available after admin sign-in.",
     initial: {
       name: "",
       symbol: "",
       founded: "",
-      type: "National",
     },
     fields: [
       { key: "name", label: "Party name", required: true },
@@ -40,14 +37,7 @@ export function PartiesPage({
         key: "founded",
         label: "Registration date",
         type: "date",
-        required: true,
-      },
-      {
-        key: "type",
-        label: "Recognition status",
-        type: "select",
-        required: true,
-        options: recognitionOptions,
+        required: false,
       },
     ],
     detailExtras: (party: Party) => (
@@ -75,13 +65,54 @@ export function PartiesPage({
         label: "Registration date",
         render: (r: Party) => formatDate(r.founded),
       },
-      {
-        key: "type",
-        label: "Status",
-        render: (r: Party) =>
-          r.type ? <Badge value={r.type} /> : "Unavailable",
-      },
     ],
+    onCreate: async (value) => {
+      const row = await getApiJson<{
+        party_id: number;
+        party_name: string;
+        symbol: string | null;
+        founded_date: string | null;
+      }>("/api/admin/reference/parties", {
+        method: "POST",
+        body: JSON.stringify({
+          name: String(value.name),
+          symbol: String(value.symbol ?? ""),
+          founded: String(value.founded ?? ""),
+        }),
+      });
+      return {
+        id: String(row.party_id),
+        name: row.party_name,
+        symbol: row.symbol ?? "",
+        founded: row.founded_date ?? "",
+      };
+    },
+    onUpdate: async (value, existing) => {
+      const row = await getApiJson<{
+        party_id: number;
+        party_name: string;
+        symbol: string | null;
+        founded_date: string | null;
+      }>(`/api/admin/reference/parties/${encodeURIComponent(existing.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: String(value.name),
+          symbol: String(value.symbol ?? ""),
+          founded: String(value.founded ?? ""),
+        }),
+      });
+      return {
+        id: String(row.party_id),
+        name: row.party_name,
+        symbol: row.symbol ?? "",
+        founded: row.founded_date ?? "",
+      };
+    },
+    onDelete: async (record) => {
+      await getApiJson(`/api/admin/reference/parties/${encodeURIComponent(record.id)}`, {
+        method: "DELETE",
+      });
+    },
   };
 
   return (

@@ -852,6 +852,150 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.admin_create_candidate_with_assets_api(
+    p_admin_id INT,
+    p_full_name VARCHAR(150),
+    p_dob DATE,
+    p_party_id INT,
+    p_constituency_id INT,
+    p_election_id INT,
+    p_assets_declared_inr NUMERIC(15, 2)
+)
+RETURNS SETOF public.candidates
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_candidate public.candidates%ROWTYPE;
+    v_status VARCHAR(20);
+BEGIN
+    SELECT status INTO v_status
+    FROM public.elections
+    WHERE election_id = p_election_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Election not found' USING ERRCODE = 'VT005';
+    END IF;
+    IF v_status = 'COMPLETED' THEN
+        RAISE EXCEPTION 'Election already completed' USING ERRCODE = 'VT002';
+    END IF;
+
+    INSERT INTO public.candidates (
+        full_name, dob, party_id, constituency_id, assets_declared_inr
+    )
+    VALUES (
+        p_full_name, p_dob, p_party_id, p_constituency_id, p_assets_declared_inr
+    )
+    RETURNING * INTO v_candidate;
+
+    INSERT INTO public.nominations (candidate_id, filed_date)
+    VALUES (v_candidate.candidate_id, CURRENT_DATE);
+    INSERT INTO public.results (election_id, candidate_id, total_votes)
+    VALUES (p_election_id, v_candidate.candidate_id, 0);
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'candidates',
+        'INSERT',
+        v_candidate.candidate_id,
+        jsonb_build_object('action', 'candidate_created', 'admin_id', p_admin_id)
+    );
+    RETURN NEXT v_candidate;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_update_candidate_api(
+    p_admin_id INT,
+    p_candidate_id INT,
+    p_full_name VARCHAR(150),
+    p_dob DATE,
+    p_party_id INT,
+    p_constituency_id INT,
+    p_assets_declared_inr NUMERIC(15, 2)
+)
+RETURNS SETOF public.candidates
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_candidate public.candidates%ROWTYPE;
+BEGIN
+    SELECT * INTO v_candidate
+    FROM public.candidates
+    WHERE candidate_id = p_candidate_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Candidate not found' USING ERRCODE = 'VT003';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.vote_events WHERE candidate_id = p_candidate_id
+    ) THEN
+        RAISE EXCEPTION 'Candidate has recorded votes and cannot be changed'
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    UPDATE public.candidates
+    SET full_name = p_full_name,
+        dob = p_dob,
+        party_id = p_party_id,
+        constituency_id = p_constituency_id,
+        assets_declared_inr = p_assets_declared_inr
+    WHERE candidate_id = p_candidate_id
+    RETURNING * INTO v_candidate;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'candidates',
+        'UPDATE',
+        v_candidate.candidate_id,
+        jsonb_build_object('action', 'candidate_updated', 'admin_id', p_admin_id)
+    );
+    RETURN NEXT v_candidate;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_delete_candidate_api(
+    p_admin_id INT,
+    p_candidate_id INT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_candidate_id INT;
+BEGIN
+    PERFORM 1 FROM public.candidates
+    WHERE candidate_id = p_candidate_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Candidate not found' USING ERRCODE = 'VT003';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.vote_events WHERE candidate_id = p_candidate_id
+    ) OR EXISTS (
+        SELECT 1
+        FROM public.results r
+        JOIN public.elections e ON e.election_id = r.election_id
+        WHERE r.candidate_id = p_candidate_id AND e.status = 'COMPLETED'
+    ) THEN
+        RAISE EXCEPTION 'Candidate with recorded or declared results cannot be deleted'
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    DELETE FROM public.results WHERE candidate_id = p_candidate_id;
+    DELETE FROM public.nominations WHERE candidate_id = p_candidate_id;
+    DELETE FROM public.candidates
+    WHERE candidate_id = p_candidate_id
+    RETURNING candidate_id INTO v_candidate_id;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'candidates',
+        'DELETE',
+        v_candidate_id,
+        jsonb_build_object('action', 'candidate_deleted', 'admin_id', p_admin_id)
+    );
+    RETURN TRUE;
+END;
+$$;
+
 -- A voter may only file a complaint for their own constituency.
 CREATE OR REPLACE FUNCTION public.create_complaint_api(
     p_voter_id INT,
@@ -886,6 +1030,17 @@ BEGIN
     VALUES (v_filed_by, p_constituency_id, p_election_id, p_description)
     RETURNING * INTO v_complaint;
 
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'complaints',
+        'INSERT',
+        v_complaint.complaint_id,
+        jsonb_build_object(
+            'action', 'complaint_filed',
+            'constituency_id', p_constituency_id,
+            'election_id', p_election_id
+        )
+    );
     RETURN NEXT v_complaint;
 END;
 $$;
@@ -902,6 +1057,269 @@ BEGIN
     INSERT INTO public.admins AS a (email, password_hash)
     VALUES (p_email, p_password_hash)
     RETURNING a.id, a.email;
+END;
+$$;
+
+-- Administrative voter CRUD. Audit metadata deliberately excludes voter PII.
+CREATE OR REPLACE FUNCTION public.admin_create_voter_api(
+    p_admin_id INT,
+    p_epic_number VARCHAR(20),
+    p_full_name VARCHAR(150),
+    p_dob DATE,
+    p_constituency_id INT
+)
+RETURNS SETOF public.voters
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_voter public.voters%ROWTYPE;
+BEGIN
+    INSERT INTO public.voters (
+        epic_number, full_name, dob, constituency_id
+    )
+    VALUES (
+        p_epic_number, p_full_name, p_dob, p_constituency_id
+    )
+    RETURNING * INTO v_voter;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'voters',
+        'INSERT',
+        v_voter.voter_id,
+        jsonb_build_object('action', 'voter_created', 'admin_id', p_admin_id)
+    );
+
+    RETURN NEXT v_voter;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_update_voter_api(
+    p_admin_id INT,
+    p_voter_id INT,
+    p_epic_number VARCHAR(20),
+    p_full_name VARCHAR(150),
+    p_dob DATE,
+    p_constituency_id INT
+)
+RETURNS SETOF public.voters
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_voter public.voters%ROWTYPE;
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM public.has_voted
+        WHERE voter_id = p_voter_id
+    ) THEN
+        RAISE EXCEPTION 'Voter with recorded participation cannot be updated'
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    UPDATE public.voters
+    SET epic_number = p_epic_number,
+        full_name = p_full_name,
+        dob = p_dob,
+        constituency_id = p_constituency_id
+    WHERE voter_id = p_voter_id
+    RETURNING * INTO v_voter;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Voter not found' USING ERRCODE = 'VT001';
+    END IF;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'voters',
+        'UPDATE',
+        v_voter.voter_id,
+        jsonb_build_object('action', 'voter_updated', 'admin_id', p_admin_id)
+    );
+
+    RETURN NEXT v_voter;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_delete_voter_api(
+    p_admin_id INT,
+    p_voter_id INT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_voter_id INT;
+BEGIN
+    DELETE FROM public.voters
+    WHERE voter_id = p_voter_id
+    RETURNING voter_id INTO v_voter_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Voter not found' USING ERRCODE = 'VT001';
+    END IF;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'voters',
+        'DELETE',
+        v_voter_id,
+        jsonb_build_object('action', 'voter_deleted', 'admin_id', p_admin_id)
+    );
+
+    RETURN TRUE;
+END;
+$$;
+
+-- Administrative election CRUD and the supported lifecycle transitions.
+CREATE OR REPLACE FUNCTION public.admin_create_election_api(
+    p_admin_id INT,
+    p_election_name VARCHAR(150),
+    p_election_type VARCHAR(30),
+    p_start_date DATE,
+    p_end_date DATE
+)
+RETURNS SETOF public.elections
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_election public.elections%ROWTYPE;
+BEGIN
+    INSERT INTO public.elections (
+        election_name, election_type, start_date, end_date, status
+    )
+    VALUES (
+        p_election_name, p_election_type, p_start_date, p_end_date, 'SCHEDULED'
+    )
+    RETURNING * INTO v_election;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'elections',
+        'INSERT',
+        v_election.election_id,
+        jsonb_build_object('action', 'election_created', 'admin_id', p_admin_id)
+    );
+    RETURN NEXT v_election;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_update_election_api(
+    p_admin_id INT,
+    p_election_id INT,
+    p_election_name VARCHAR(150),
+    p_election_type VARCHAR(30),
+    p_start_date DATE,
+    p_end_date DATE
+)
+RETURNS SETOF public.elections
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_election public.elections%ROWTYPE;
+BEGIN
+    SELECT * INTO v_election
+    FROM public.elections
+    WHERE election_id = p_election_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Election not found' USING ERRCODE = 'VT005';
+    END IF;
+    IF v_election.status <> 'SCHEDULED' THEN
+        RAISE EXCEPTION 'Only scheduled elections can be edited'
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    UPDATE public.elections
+    SET election_name = p_election_name,
+        election_type = p_election_type,
+        start_date = p_start_date,
+        end_date = p_end_date
+    WHERE election_id = p_election_id
+    RETURNING * INTO v_election;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'elections',
+        'UPDATE',
+        v_election.election_id,
+        jsonb_build_object('action', 'election_updated', 'admin_id', p_admin_id)
+    );
+    RETURN NEXT v_election;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_set_election_status_api(
+    p_admin_id INT,
+    p_election_id INT,
+    p_status VARCHAR(20)
+)
+RETURNS SETOF public.elections
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_election public.elections%ROWTYPE;
+BEGIN
+    SELECT * INTO v_election
+    FROM public.elections
+    WHERE election_id = p_election_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Election not found' USING ERRCODE = 'VT005';
+    END IF;
+    IF NOT (
+        (v_election.status = 'SCHEDULED' AND p_status = 'ONGOING') OR
+        (v_election.status = 'ONGOING' AND p_status = 'COMPLETED')
+    ) THEN
+        RAISE EXCEPTION 'Invalid election status transition'
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    UPDATE public.elections
+    SET status = p_status
+    WHERE election_id = p_election_id
+    RETURNING * INTO v_election;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'elections',
+        'UPDATE',
+        v_election.election_id,
+        jsonb_build_object(
+            'action', 'election_status_changed',
+            'status', p_status,
+            'admin_id', p_admin_id
+        )
+    );
+    RETURN NEXT v_election;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_delete_election_api(
+    p_admin_id INT,
+    p_election_id INT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_election_id INT;
+BEGIN
+    DELETE FROM public.elections
+    WHERE election_id = p_election_id
+    RETURNING election_id INTO v_election_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Election not found' USING ERRCODE = 'VT005';
+    END IF;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'elections',
+        'DELETE',
+        v_election_id,
+        jsonb_build_object('action', 'election_deleted', 'admin_id', p_admin_id)
+    );
+    RETURN TRUE;
 END;
 $$;
 
@@ -965,6 +1383,52 @@ BEGIN
     UPDATE public.nominations SET status = p_status
     WHERE nomination_id = p_nomination_id
     RETURNING *;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_set_nomination_status_api(
+    p_admin_id INT,
+    p_nomination_id INT,
+    p_status VARCHAR(20)
+)
+RETURNS SETOF public.nominations
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_nomination public.nominations%ROWTYPE;
+BEGIN
+    SELECT * INTO v_nomination
+    FROM public.nominations
+    WHERE nomination_id = p_nomination_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nomination not found' USING ERRCODE = 'VT007';
+    END IF;
+    IF NOT (
+        (v_nomination.status = 'FILED' AND p_status IN ('ACCEPTED', 'REJECTED', 'WITHDRAWN')) OR
+        (v_nomination.status = 'ACCEPTED' AND p_status = 'WITHDRAWN')
+    ) THEN
+        RAISE EXCEPTION 'Invalid nomination transition'
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    UPDATE public.nominations
+    SET status = p_status
+    WHERE nomination_id = p_nomination_id
+    RETURNING * INTO v_nomination;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'nominations',
+        'UPDATE',
+        v_nomination.nomination_id,
+        jsonb_build_object(
+            'action', 'nomination_status_changed',
+            'status', p_status,
+            'admin_id', p_admin_id
+        )
+    );
+    RETURN NEXT v_nomination;
 END;
 $$;
 
@@ -1048,6 +1512,129 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.admin_set_complaint_status_api(
+    p_admin_id INT,
+    p_complaint_id INT,
+    p_status VARCHAR(20)
+)
+RETURNS SETOF public.complaints
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_complaint public.complaints%ROWTYPE;
+BEGIN
+    UPDATE public.complaints
+    SET status = p_status
+    WHERE complaint_id = p_complaint_id
+    RETURNING * INTO v_complaint;
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (
+        'complaints',
+        'UPDATE',
+        v_complaint.complaint_id,
+        jsonb_build_object(
+            'action', 'complaint_status_changed',
+            'status', p_status,
+            'admin_id', p_admin_id
+        )
+    );
+    RETURN NEXT v_complaint;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_mutate_reference_api(
+    p_admin_id INT,
+    p_entity VARCHAR(20),
+    p_operation VARCHAR(10),
+    p_record_id INT,
+    p_data JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_party public.parties%ROWTYPE;
+    v_constituency public.constituencies%ROWTYPE;
+    v_observer public.observers%ROWTYPE;
+    v_result JSONB;
+    v_row_id BIGINT;
+BEGIN
+    IF p_entity = 'parties' THEN
+        IF p_operation = 'CREATE' THEN
+            INSERT INTO public.parties (party_name, symbol, founded_date)
+            VALUES (p_data->>'name', NULLIF(p_data->>'symbol', ''),
+                    NULLIF(p_data->>'founded', '')::DATE)
+            RETURNING * INTO v_party;
+        ELSIF p_operation = 'UPDATE' THEN
+            UPDATE public.parties
+            SET party_name = p_data->>'name',
+                symbol = NULLIF(p_data->>'symbol', ''),
+                founded_date = NULLIF(p_data->>'founded', '')::DATE
+            WHERE party_id = p_record_id RETURNING * INTO v_party;
+        ELSIF p_operation = 'DELETE' THEN
+            DELETE FROM public.parties WHERE party_id = p_record_id
+            RETURNING * INTO v_party;
+        ELSE
+            RAISE EXCEPTION 'Unsupported operation' USING ERRCODE = '22023';
+        END IF;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Party not found' USING ERRCODE = 'P0002'; END IF;
+        v_row_id := v_party.party_id;
+        v_result := to_jsonb(v_party);
+    ELSIF p_entity = 'constituencies' THEN
+        IF p_operation = 'CREATE' THEN
+            INSERT INTO public.constituencies (name, state_id, total_registered_voters)
+            VALUES (p_data->>'name', (p_data->>'state_id')::INT, (p_data->>'voters')::INT)
+            RETURNING * INTO v_constituency;
+        ELSIF p_operation = 'UPDATE' THEN
+            UPDATE public.constituencies
+            SET name = p_data->>'name', state_id = (p_data->>'state_id')::INT,
+                total_registered_voters = (p_data->>'voters')::INT
+            WHERE constituency_id = p_record_id RETURNING * INTO v_constituency;
+        ELSIF p_operation = 'DELETE' THEN
+            DELETE FROM public.constituencies WHERE constituency_id = p_record_id
+            RETURNING * INTO v_constituency;
+        ELSE
+            RAISE EXCEPTION 'Unsupported operation' USING ERRCODE = '22023';
+        END IF;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Constituency not found' USING ERRCODE = 'P0002'; END IF;
+        v_row_id := v_constituency.constituency_id;
+        v_result := to_jsonb(v_constituency);
+    ELSIF p_entity = 'observers' THEN
+        IF p_operation = 'CREATE' THEN
+            INSERT INTO public.observers (full_name, constituency_id, election_id)
+            VALUES (p_data->>'name', (p_data->>'constituency_id')::INT,
+                    (p_data->>'election_id')::INT)
+            RETURNING * INTO v_observer;
+        ELSIF p_operation = 'UPDATE' THEN
+            UPDATE public.observers
+            SET full_name = p_data->>'name',
+                constituency_id = (p_data->>'constituency_id')::INT,
+                election_id = (p_data->>'election_id')::INT
+            WHERE observer_id = p_record_id RETURNING * INTO v_observer;
+        ELSIF p_operation = 'DELETE' THEN
+            DELETE FROM public.observers WHERE observer_id = p_record_id
+            RETURNING * INTO v_observer;
+        ELSE
+            RAISE EXCEPTION 'Unsupported operation' USING ERRCODE = '22023';
+        END IF;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Observer not found' USING ERRCODE = 'P0002'; END IF;
+        v_row_id := v_observer.observer_id;
+        v_result := to_jsonb(v_observer);
+    ELSE
+        RAISE EXCEPTION 'Unsupported entity' USING ERRCODE = '22023';
+    END IF;
+
+    INSERT INTO public.audit_log (table_name, operation, row_id, details)
+    VALUES (p_entity, p_operation, v_row_id,
+            jsonb_build_object('action', 'admin_reference_write', 'admin_id', p_admin_id));
+    RETURN v_result;
+END;
+$$;
+
 -- Audit log lookup: paginated, with a maximum of 200 rows per call
 CREATE OR REPLACE FUNCTION public.get_audit_log_api(
     p_limit INT DEFAULT 50,
@@ -1100,6 +1687,19 @@ REVOKE ALL ON FUNCTION public.get_candidates_api(INT)                     FROM P
 REVOKE ALL ON FUNCTION public.create_candidate_with_assets_api(VARCHAR, DATE, INT, INT, INT, NUMERIC) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.create_complaint_api(INT, INT, INT, TEXT)   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.create_admin_api(VARCHAR, TEXT)             FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_create_voter_api(INT, VARCHAR, VARCHAR, DATE, INT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_update_voter_api(INT, INT, VARCHAR, VARCHAR, DATE, INT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_delete_voter_api(INT, INT)             FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_create_election_api(INT, VARCHAR, VARCHAR, DATE, DATE) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_update_election_api(INT, INT, VARCHAR, VARCHAR, DATE, DATE) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_set_election_status_api(INT, INT, VARCHAR) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_delete_election_api(INT, INT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_create_candidate_with_assets_api(INT, VARCHAR, DATE, INT, INT, INT, NUMERIC) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_update_candidate_api(INT, INT, VARCHAR, DATE, INT, INT, NUMERIC) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_delete_candidate_api(INT, INT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_set_nomination_status_api(INT, INT, VARCHAR) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_set_complaint_status_api(INT, INT, VARCHAR) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.admin_mutate_reference_api(INT, VARCHAR, VARCHAR, INT, JSONB) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_states_api()                            FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_constituencies_api(INT)                 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.get_parties_api()                           FROM PUBLIC, anon, authenticated;
@@ -1116,6 +1716,19 @@ GRANT EXECUTE ON FUNCTION public.get_candidates_api(INT)                     TO 
 GRANT EXECUTE ON FUNCTION public.create_candidate_with_assets_api(VARCHAR, DATE, INT, INT, INT, NUMERIC) TO service_role;
 GRANT EXECUTE ON FUNCTION public.create_complaint_api(INT, INT, INT, TEXT)   TO service_role;
 GRANT EXECUTE ON FUNCTION public.create_admin_api(VARCHAR, TEXT)             TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_create_voter_api(INT, VARCHAR, VARCHAR, DATE, INT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_update_voter_api(INT, INT, VARCHAR, VARCHAR, DATE, INT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_delete_voter_api(INT, INT)             TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_create_election_api(INT, VARCHAR, VARCHAR, DATE, DATE) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_update_election_api(INT, INT, VARCHAR, VARCHAR, DATE, DATE) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_set_election_status_api(INT, INT, VARCHAR) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_delete_election_api(INT, INT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_create_candidate_with_assets_api(INT, VARCHAR, DATE, INT, INT, INT, NUMERIC) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_update_candidate_api(INT, INT, VARCHAR, DATE, INT, INT, NUMERIC) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_delete_candidate_api(INT, INT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_set_nomination_status_api(INT, INT, VARCHAR) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_set_complaint_status_api(INT, INT, VARCHAR) TO service_role;
+GRANT EXECUTE ON FUNCTION public.admin_mutate_reference_api(INT, VARCHAR, VARCHAR, INT, JSONB) TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_states_api()                            TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_constituencies_api(INT)                 TO service_role;
 GRANT EXECUTE ON FUNCTION public.get_parties_api()                           TO service_role;

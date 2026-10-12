@@ -14,6 +14,14 @@ export const createCandidateSchema = z.object({
   assetsDeclaredInr: z.number().nonnegative().max(9999999999999.99),
 }).strict();
 
+export const updateCandidateSchema = z.object({
+  fullName: z.string().trim().min(2).max(150),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  partyId: z.number().int().positive().nullable(),
+  constituencyId: z.number().int().positive(),
+  assetsDeclaredInr: z.number().nonnegative().max(9999999999999.99),
+}).strict();
+
 const voterRecordSchema = z.object({
   epicNumber: z.string().trim().min(1).max(20),
   fullName: z.string().trim().min(2).max(150),
