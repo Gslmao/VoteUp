@@ -52,6 +52,43 @@ export const seedStore: Store = {
     { id: "AC-310", name: "Chennai South", state: "Tamil Nadu", voters: 229180 },
     { id: "AC-408", name: "Pune Cantonment", state: "Maharashtra", voters: 176340 },
   ],
+  parties: [
+    {
+      id: "PTY-01",
+      name: "National Civic Party",
+      symbol: "Rising Sun",
+      founded: "1998-04-12",
+      type: "National",
+    },
+    {
+      id: "PTY-02",
+      name: "People's Reform Front",
+      symbol: "Balance Scale",
+      founded: "2005-08-20",
+      type: "National",
+    },
+    {
+      id: "PTY-03",
+      name: "Democratic United Alliance",
+      symbol: "Torch",
+      founded: "2012-01-15",
+      type: "State",
+    },
+    {
+      id: "PTY-04",
+      name: "Federal Citizens Congress",
+      symbol: "Book",
+      founded: "2018-09-05",
+      type: "Registered (Unrecognised)",
+    },
+    {
+      id: "PTY-05",
+      name: "Independent",
+      symbol: "Free Symbol",
+      founded: "1950-01-26",
+      type: "Registered (Unrecognised)",
+    },
+  ],
   candidates: [
     {
       id: "CAN-1001",
@@ -295,6 +332,7 @@ export const navItems: NavItem[] = [
   { key: "overview", label: "Overview", icon: "grid" },
   { key: "elections", label: "Elections", icon: "calendar" },
   { key: "constituencies", label: "Constituencies", icon: "map" },
+  { key: "parties", label: "Parties", icon: "flag" },
   { key: "candidates", label: "Candidates", icon: "users" },
   { key: "nominations", label: "Nominations", icon: "file" },
   { key: "voters", label: "Voters", icon: "id" },

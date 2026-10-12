@@ -9,6 +9,7 @@ export function ObserversPage({
   create,
   update,
   remove,
+  notify,
 }: EntityPageProps) {
   const electionOptions = store.elections.map((e) => e.name);
   const constituencyOptions = store.constituencies.map((c) => c.name);
@@ -16,6 +17,7 @@ export function ObserversPage({
   const observerConfig: DirectoryConfig<Observer> = {
     title: "Observers",
     description: "Manage observer profiles and election assignments.",
+    backendNotice: "Observer data is local demonstration data; no backend API exists.",
     key: "observers",
     singular: "Observer",
     filterKey: "election",
@@ -53,6 +55,7 @@ export function ObserversPage({
       create={create}
       update={update}
       remove={remove}
+      notify={notify}
     />
   );
 }

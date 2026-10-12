@@ -11,6 +11,7 @@ export const createCandidateSchema = z.object({
   partyId: z.number().int().positive().nullable().optional(),
   constituencyId: z.number().int().positive(),
   electionId: z.number().int().positive(),
+  assetsDeclaredInr: z.number().nonnegative().max(9999999999999.99),
 }).strict();
 
 export const castVoteSchema = z.object({

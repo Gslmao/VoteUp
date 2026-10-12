@@ -10,7 +10,7 @@ import { Detail } from "@/components/ui/Detail";
 import { Confirm } from "@/components/ui/Confirm";
 import { formatDate } from "@/lib/formatters";
 
-export function ComplaintsPage({ store, update }: EntityPageProps) {
+export function ComplaintsPage({ store, update, backendConnected }: EntityPageProps) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [constituency, setConstituency] = useState("");
@@ -33,7 +33,11 @@ export function ComplaintsPage({ store, update }: EntityPageProps) {
     <>
       <PageHeader
         title="Complaints"
-        description="Track, investigate and resolve election-related complaints."
+        description={
+          backendConnected
+            ? "Complaints are loaded from the backend. Status updates and filed dates are not supported."
+            : "Track, investigate and resolve election-related complaints."
+        }
       />
 
       <Filters search={search} setSearch={setSearch}>
@@ -70,7 +74,7 @@ export function ComplaintsPage({ store, update }: EntityPageProps) {
           {
             key: "filed",
             label: "Filed date",
-            render: (r) => formatDate(r.filed),
+            render: (r) => (r.filed ? formatDate(r.filed) : "Unavailable"),
           },
           { key: "constituency", label: "Constituency" },
           { key: "election", label: "Election" },
@@ -86,7 +90,7 @@ export function ComplaintsPage({ store, update }: EntityPageProps) {
           },
         ]}
         onView={setView}
-        extraAction={(r) =>
+        extraAction={!backendConnected ? (r) =>
           ["OPEN", "INVESTIGATING", "RESOLVED", "DISMISSED"]
             .filter((s) => s !== r.status)
             .map((s) => (
@@ -101,7 +105,7 @@ export function ComplaintsPage({ store, update }: EntityPageProps) {
                 Mark {s.toLowerCase()}
               </button>
             ))
-        }
+        : undefined}
       />
 
       {view && (

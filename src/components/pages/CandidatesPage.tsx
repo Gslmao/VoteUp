@@ -11,16 +11,22 @@ export function CandidatesPage({
   create,
   update,
   remove,
+  notify,
 }: EntityPageProps) {
   const partyOptions = Array.from(
-    new Set([...store.candidates.map((c) => c.party), "Independent"])
+    new Set([
+      ...(store.parties?.map((p) => p.name) ?? []),
+      ...store.candidates.map((c) => c.party),
+      "Independent",
+    ])
   );
   const constituencyOptions = store.constituencies.map((c) => c.name);
+  const electionOptions = store.elections.map((e) => e.name);
 
   const candidateConfig: DirectoryConfig<Candidate> = {
     title: "Candidates",
     description:
-      "Register candidates separately from nomination review and approval.",
+      "Candidate records from the backend. Existing nomination decisions are not available.",
     key: "candidates",
     singular: "Candidate",
     filterKey: "party",
@@ -32,13 +38,20 @@ export function CandidatesPage({
       dob: "",
       party: "",
       constituency: "",
+      election: electionOptions[0] ?? "",
       assets: 0,
       status: "FILED",
     },
     fields: [
       { key: "name", label: "Full name", required: true },
       { key: "dob", label: "Date of birth", type: "date", required: true },
-      { key: "party", label: "Political party", required: true },
+      {
+        key: "party",
+        label: "Political party",
+        type: "select",
+        required: false,
+        options: partyOptions,
+      },
       {
         key: "constituency",
         label: "Constituency",
@@ -47,12 +60,72 @@ export function CandidatesPage({
         options: constituencyOptions,
       },
       {
+        key: "election",
+        label: "Election",
+        type: "select",
+        required: true,
+        options: electionOptions,
+      },
+      {
         key: "assets",
         label: "Declared assets (INR)",
         type: "number",
         required: true,
       },
     ],
+    createOnly: true,
+    backendNotice: "Only candidate creation is supported; edits and deletion are disabled.",
+    onCreate: async (value) => {
+      const constituency = store.constituencies.find(
+        (item) => item.name === value.constituency
+      );
+      const election = store.elections.find((item) => item.name === value.election);
+      const party = store.parties.find((item) => item.name === value.party);
+      if (!constituency || !election) {
+        throw new Error("Select a valid constituency and ongoing election.");
+      }
+      const response = await fetch("/api/candidates", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: value.name,
+          dob: value.dob,
+          partyId: party ? Number(party.id) : null,
+          constituencyId: Number(constituency.id),
+          electionId: Number(election.id),
+          assetsDeclaredInr: Number(value.assets),
+        }),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const error =
+          typeof body === "object" && body !== null && "error" in body &&
+          typeof body.error === "string"
+            ? body.error
+            : `Candidate creation failed (${response.status})`;
+        throw new Error(error);
+      }
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        !("candidate" in body) ||
+        typeof body.candidate !== "object" ||
+        body.candidate === null ||
+        !("candidate_id" in body.candidate)
+      ) {
+        throw new Error("Candidate was created, but the API response was invalid.");
+      }
+      return {
+        id: String(body.candidate.candidate_id),
+        name: String(value.name),
+        dob: String(value.dob),
+        party: party?.name ?? "Independent",
+        constituency: constituency.name,
+        assets: Number(value.assets),
+        status: "FILED",
+      } as Candidate;
+    },
     detailExtras: (candidate: Candidate) => (
       <div className="related">
         <h3>Nomination filings</h3>
@@ -86,7 +159,8 @@ export function CandidatesPage({
       {
         key: "status",
         label: "Nomination",
-        render: (r: Candidate) => <Badge value={r.status} />,
+        render: (r: Candidate) =>
+          r.status ? <Badge value={r.status} /> : "Unavailable",
       },
     ],
   };
@@ -98,6 +172,7 @@ export function CandidatesPage({
       create={create}
       update={update}
       remove={remove}
+      notify={notify}
     />
   );
 }

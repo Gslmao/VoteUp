@@ -46,3 +46,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export async function DELETE() {
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(config.auth.cookies.admin, '', {
+    ...getSessionCookieOptions(),
+    maxAge: 0,
+  });
+  return response;
+}

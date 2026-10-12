@@ -9,6 +9,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { OverviewPage } from "@/components/pages/OverviewPage";
 import { ElectionsPage } from "@/components/pages/ElectionsPage";
 import { ConstituenciesPage } from "@/components/pages/ConstituenciesPage";
+import { PartiesPage } from "@/components/pages/PartiesPage";
 import { CandidatesPage } from "@/components/pages/CandidatesPage";
 import { NominationsPage } from "@/components/pages/NominationsPage";
 import { VotersPage } from "@/components/pages/VotersPage";
@@ -16,6 +17,7 @@ import { ComplaintsPage } from "@/components/pages/ComplaintsPage";
 import { ObserversPage } from "@/components/pages/ObserversPage";
 import { ResultsPage } from "@/components/pages/ResultsPage";
 import { AuditPage } from "@/components/pages/AuditPage";
+import { getApiJson, loadAdminPortalData } from "@/lib/portalBackend";
 
 interface PortalAppProps {
   initialRoute?: PageKey;
@@ -24,6 +26,13 @@ interface PortalAppProps {
 export function PortalApp({ initialRoute }: PortalAppProps) {
   const [mounted, setMounted] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [turnout, setTurnout] = useState<{
+    votesCast: number;
+    registeredVoters: number;
+    percentage: number;
+    electionName: string;
+  } | null>(null);
   const [page, setPage] = useState<PageKey>(initialRoute ?? "overview");
   const [store, setStore] = useState<Store>(seedStore);
   const [voters, setVoters] = useState<Voter[]>(seedVoters);
@@ -31,28 +40,48 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
 
   // Sync session and local storage on client mount
   useEffect(() => {
-    setMounted(true);
-
-    const session = sessionStorage.getItem("ecap-session");
-    if (session === "active") {
-      setLoggedIn(true);
-    }
-
-    try {
-      const savedStore = localStorage.getItem("ecap-demo-store");
-      if (savedStore) {
-        setStore(JSON.parse(savedStore));
+    const mountTimeout = window.setTimeout(() => setMounted(true), 0);
+    const hydrationTimeout = window.setTimeout(() => {
+      try {
+        const savedStore = localStorage.getItem("ecap-demo-store");
+        if (savedStore) {
+          const parsed = JSON.parse(savedStore);
+          if (!parsed.parties) {
+            parsed.parties = seedStore.parties;
+          }
+          setStore(parsed);
+        }
+      } catch {
+        // Ignore malformed local demonstration data.
       }
-    } catch {
-      // ignore JSON parse error
+
+      const pathRoute = window.location.pathname.split("/")[1] as PageKey;
+      if (navItems.some((n) => n.key === pathRoute)) {
+        setPage(pathRoute);
+      } else if (initialRoute) {
+        setPage(initialRoute);
+      }
+    }, 0);
+
+    if (sessionStorage.getItem("ecap-session") === "active") {
+      void loadAdminPortalData()
+        .then((data) => {
+          setStore((current) => ({ ...current, ...data }));
+          setTurnout(data.turnout);
+          setBackendConnected(true);
+          setLoggedIn(true);
+        })
+        .catch(() => {
+          sessionStorage.removeItem("ecap-session");
+          setBackendConnected(false);
+          setLoggedIn(false);
+        });
     }
 
-    const pathRoute = window.location.pathname.split("/")[1] as PageKey;
-    if (navItems.some((n) => n.key === pathRoute)) {
-      setPage(pathRoute);
-    } else if (initialRoute) {
-      setPage(initialRoute);
-    }
+    return () => {
+      window.clearTimeout(mountTimeout);
+      window.clearTimeout(hydrationTimeout);
+    };
   }, [initialRoute]);
 
   // Persist store to localStorage
@@ -120,7 +149,9 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
       [key]: [item, ...s[key]],
     }));
     const record = item as { id: string };
-    addAudit(key.slice(0, -1), "CREATE", record.id, detail);
+    if (!(backendConnected && key === "candidates")) {
+      addAudit(key.slice(0, -1), "CREATE", record.id, detail);
+    }
     notify(detail);
   };
 
@@ -145,7 +176,15 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
     notify(detail);
   };
 
-  const signIn = () => {
+  const signIn = async (email: string, password: string) => {
+    await getApiJson<{ success: boolean }>("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await loadAdminPortalData();
+    setStore((current) => ({ ...current, ...data }));
+    setTurnout(data.turnout);
+    setBackendConnected(true);
     sessionStorage.setItem("ecap-session", "active");
     setLoggedIn(true);
     if (typeof window !== "undefined") {
@@ -157,6 +196,13 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
   const logout = () => {
     sessionStorage.removeItem("ecap-session");
     setLoggedIn(false);
+    setBackendConnected(false);
+    setTurnout(null);
+    void getApiJson<{ success: boolean }>("/api/admin/login", {
+      method: "DELETE",
+    }).catch((error: unknown) => {
+      console.error("Admin logout failed:", error);
+    });
     if (typeof window !== "undefined") {
       window.history.pushState({}, "", "/login");
     }
@@ -176,6 +222,7 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
     remove,
     addAudit,
     notify,
+    backendConnected,
   };
 
   return (
@@ -187,18 +234,27 @@ export function PortalApp({ initialRoute }: PortalAppProps) {
       onCloseToast={() => setToast(null)}
     >
       {page === "overview" && (
-        <OverviewPage store={store} voters={voters} go={go} />
+        <OverviewPage
+          store={store}
+          voters={voters}
+          go={go}
+          backendConnected={backendConnected}
+          turnout={turnout}
+        />
       )}
       {page === "elections" && <ElectionsPage {...entityPageProps} />}
       {page === "constituencies" && (
         <ConstituenciesPage {...entityPageProps} />
       )}
+      {page === "parties" && <PartiesPage {...entityPageProps} />}
       {page === "candidates" && <CandidatesPage {...entityPageProps} />}
       {page === "nominations" && <NominationsPage {...entityPageProps} />}
       {page === "voters" && <VotersPage {...entityPageProps} />}
       {page === "complaints" && <ComplaintsPage {...entityPageProps} />}
       {page === "observers" && <ObserversPage {...entityPageProps} />}
-      {page === "results" && <ResultsPage store={store} />}
+      {page === "results" && (
+        <ResultsPage store={store} backendConnected={backendConnected} />
+      )}
       {page === "audit" && <AuditPage store={store} />}
     </AppShell>
   );

@@ -27,7 +27,7 @@ export type Candidate = {
   party: string;
   constituency: string;
   assets: number;
-  status: NominationStatus;
+  status?: NominationStatus;
 };
 
 export type Nomination = {
@@ -85,9 +85,18 @@ export type Result = {
   timestamp: string;
 };
 
+export type Party = {
+  id: string;
+  name: string;
+  symbol: string;
+  founded: string;
+  type?: "National" | "State" | "Registered (Unrecognised)";
+};
+
 export type Store = {
   elections: Election[];
   constituencies: Constituency[];
+  parties: Party[];
   candidates: Candidate[];
   nominations: Nomination[];
   complaints: Complaint[];
@@ -99,6 +108,7 @@ export type PageKey =
   | "overview"
   | "elections"
   | "constituencies"
+  | "parties"
   | "candidates"
   | "nominations"
   | "voters"
@@ -141,4 +151,5 @@ export type EntityPageProps = {
   remove: (key: keyof Store, id: string, detail: string) => void;
   addAudit: (entity: string, operation: string, reference: string, details: string) => void;
   notify: (text: string, tone?: "success" | "error") => void;
+  backendConnected: boolean;
 };

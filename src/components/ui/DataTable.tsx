@@ -29,7 +29,8 @@ export function DataTable<T extends { id: string }>({
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    setPage(1);
+    const pageResetTimeout = window.setTimeout(() => setPage(1), 0);
+    return () => window.clearTimeout(pageResetTimeout);
   }, [rows.length]);
 
   const sorted = useMemo(() => {

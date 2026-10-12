@@ -19,6 +19,7 @@ export function ElectionsPage({
   update,
   remove,
   notify,
+  backendConnected,
 }: EntityPageProps) {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
@@ -95,11 +96,17 @@ export function ElectionsPage({
     <>
       <PageHeader
         title="Elections"
-        description="Create, schedule and monitor electoral events."
+        description={
+          backendConnected
+            ? "Only ongoing elections are exposed by the backend; election management is not available."
+            : "Create, schedule and monitor electoral events."
+        }
         action={
-          <Button onClick={() => setForm("new")}>
-            <Icon name="plus" size={16} /> Create election
-          </Button>
+          !backendConnected && (
+            <Button onClick={() => setForm("new")}>
+              <Icon name="plus" size={16} /> Create election
+            </Button>
+          )
         }
       />
 
@@ -154,9 +161,9 @@ export function ElectionsPage({
           },
         ]}
         onView={setView}
-        onEdit={(r) => setForm(r)}
-        onDelete={(r) => setConfirm({ row: r, action: "delete" })}
-        extraAction={(r) =>
+        onEdit={!backendConnected ? (r) => setForm(r) : undefined}
+        onDelete={!backendConnected ? (r) => setConfirm({ row: r, action: "delete" }) : undefined}
+        extraAction={!backendConnected ? (r) =>
           r.status !== "COMPLETED" && (
             <button
               type="button"
@@ -168,7 +175,7 @@ export function ElectionsPage({
               Advance status
             </button>
           )
-        }
+        : undefined}
       />
 
       {form && (

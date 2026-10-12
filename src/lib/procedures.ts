@@ -38,6 +38,16 @@ export async function getLiveTurnout(constituencyId: number, electionId: number)
   return { rows: data ?? [] };
 }
 
+export async function getElectionTurnout(electionId: number) {
+  const { data, error } = await getSupabaseClient()
+    .from('view_live_turnout')
+    .select('*')
+    .eq('election_id', electionId)
+    .order('constituency_id');
+  throwIfError(error);
+  return { rows: data ?? [] };
+}
+
 export async function getElections(status?: string) {
   let request = getSupabaseClient().from('elections').select('*').order('election_id');
   if (status) request = request.eq('status', status);
@@ -65,20 +75,40 @@ export async function getCandidates(constituencyId?: number) {
   return { rows: data ?? [] };
 }
 
+export async function getConstituencies() {
+  const { data, error } = await getSupabaseClient()
+    .from('constituencies')
+    .select('constituency_id, name, state_id, total_registered_voters, states(state_name)')
+    .order('constituency_id');
+  throwIfError(error);
+  return { rows: data ?? [] };
+}
+
+export async function getParties() {
+  const { data, error } = await getSupabaseClient()
+    .from('parties')
+    .select('party_id, party_name, symbol, founded_date')
+    .order('party_id');
+  throwIfError(error);
+  return { rows: data ?? [] };
+}
+
 export async function createCandidate(data: {
   fullName: string;
   dob: string;
   partyId?: number | null;
   constituencyId: number;
   electionId: number;
+  assetsDeclaredInr: number;
 }) {
   const { data: candidate, error } = await getSupabaseClient()
-    .rpc('create_candidate_api', {
+    .rpc('create_candidate_with_assets_api', {
       p_full_name: data.fullName,
       p_dob: data.dob,
       p_party_id: data.partyId ?? null,
       p_constituency_id: data.constituencyId,
       p_election_id: data.electionId,
+      p_assets_declared_inr: data.assetsDeclaredInr,
     })
     .single();
   throwIfError(error);

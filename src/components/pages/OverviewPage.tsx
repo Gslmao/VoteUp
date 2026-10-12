@@ -12,9 +12,21 @@ interface OverviewPageProps {
   store: Store;
   voters: Voter[];
   go: (p: PageKey) => void;
+  backendConnected: boolean;
+  turnout: {
+    votesCast: number;
+    registeredVoters: number;
+    percentage: number;
+    electionName: string;
+  } | null;
 }
 
-export function OverviewPage({ store, go }: OverviewPageProps) {
+export function OverviewPage({
+  store,
+  go,
+  backendConnected,
+  turnout,
+}: OverviewPageProps) {
   const openComplaints = store.complaints.filter((c) =>
     ["OPEN", "INVESTIGATING"].includes(c.status)
   );
@@ -26,16 +38,9 @@ export function OverviewPage({ store, go }: OverviewPageProps) {
       "elections" as PageKey,
     ],
     [
-      "Scheduled elections",
-      store.elections.filter((e) => e.status === "SCHEDULED").length,
-      "elections" as PageKey,
-    ],
-    [
-      "Registered voters",
-      store.constituencies
-        .reduce((n, c) => n + c.voters, 0)
-        .toLocaleString("en-IN"),
-      "voters" as PageKey,
+      "Constituencies",
+      store.constituencies.length,
+      "constituencies" as PageKey,
     ],
     ["Candidates", store.candidates.length, "candidates" as PageKey],
     ["Open complaints", openComplaints.length, "complaints" as PageKey],
@@ -50,7 +55,9 @@ export function OverviewPage({ store, go }: OverviewPageProps) {
 
       <div className="demo-strip">
         <Icon name="info" size={16} />
-        All figures and records in this prototype are fictional demonstration data.
+        {backendConnected
+          ? "Elections, candidates, constituencies, parties, complaints, results and turnout are loaded from the backend. Voter, nomination, observer and audit records remain local demo data."
+          : "This portal is not connected to the backend."}
       </div>
 
       <div className="metrics">
@@ -76,7 +83,7 @@ export function OverviewPage({ store, go }: OverviewPageProps) {
           <div className="panel-head">
             <div>
               <h2>Elections requiring attention</h2>
-              <p>Active and upcoming electoral events</p>
+              <p>Ongoing elections exposed by the backend</p>
             </div>
             <button type="button" onClick={() => go("elections")}>
               View all
@@ -105,16 +112,20 @@ export function OverviewPage({ store, go }: OverviewPageProps) {
           <div className="panel-head">
             <div>
               <h2>Turnout snapshot</h2>
-              <p>Ongoing demonstration</p>
+              <p>{turnout ? `${turnout.electionName} turnout` : "No turnout data available"}</p>
             </div>
           </div>
           <div className="turnout">
-            <strong>61.8%</strong>
-            <span>Estimated participation</span>
+            <strong>{turnout ? `${turnout.percentage.toFixed(1)}%` : "—"}</strong>
+            <span>Recorded participation</span>
             <div>
-              <i style={{ width: "61.8%" }} />
+              <i style={{ width: `${Math.min(turnout?.percentage ?? 0, 100)}%` }} />
             </div>
-            <p>1,04,242 of 1,68,680 registered</p>
+            <p>
+              {turnout
+                ? `${turnout.votesCast.toLocaleString("en-IN")} of ${turnout.registeredVoters.toLocaleString("en-IN")} registered`
+                : "The backend has no turnout for an ongoing election."}
+            </p>
           </div>
           <div className="turnout-legend">
             <span>
@@ -165,7 +176,9 @@ export function OverviewPage({ store, go }: OverviewPageProps) {
               <p>Latest administrative changes</p>
             </div>
           </div>
-          {store.audits.slice(0, 4).map((a) => (
+          {backendConnected ? (
+            <p className="empty">Backend administrative audit history is not available.</p>
+          ) : store.audits.slice(0, 4).map((a) => (
             <div className="activity-item" key={a.id}>
               <span>
                 <Icon name="history" size={15} />

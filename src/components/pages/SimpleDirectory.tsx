@@ -20,7 +20,7 @@ import { nextId } from "@/lib/formatters";
 export interface DirectoryConfig<T extends { id: string; name: string }> {
   title: string;
   description: string;
-  key: "constituencies" | "candidates" | "observers";
+  key: "constituencies" | "candidates" | "observers" | "parties";
   singular: string;
   fields: FieldConfig[];
   columns: Column<T>[];
@@ -30,6 +30,10 @@ export interface DirectoryConfig<T extends { id: string; name: string }> {
   secondFilterKey?: string;
   secondFilterOptions?: string[];
   detailExtras?: (record: T) => ReactNode;
+  readOnly?: boolean;
+  createOnly?: boolean;
+  backendNotice?: string;
+  onCreate?: (value: Record<string, unknown>) => Promise<T>;
 }
 
 interface SimpleDirectoryProps<T extends { id: string; name: string }> {
@@ -38,6 +42,7 @@ interface SimpleDirectoryProps<T extends { id: string; name: string }> {
   create: EntityPageProps["create"];
   update: EntityPageProps["update"];
   remove: EntityPageProps["remove"];
+  notify: EntityPageProps["notify"];
 }
 
 export function SimpleDirectory<T extends { id: string; name: string }>({
@@ -46,6 +51,7 @@ export function SimpleDirectory<T extends { id: string; name: string }>({
   create,
   update,
   remove,
+  notify,
 }: SimpleDirectoryProps<T>) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
@@ -73,16 +79,27 @@ export function SimpleDirectory<T extends { id: string; name: string }>({
     return matchesSearch && matchesFilter && matchesSecondFilter;
   });
 
-  const save = (value: Record<string, unknown>) => {
+  const save = async (value: Record<string, unknown>) => {
     const prefix = config.singular.slice(0, 3).toUpperCase();
-    const item = {
-      ...value,
-      id: form === "new" ? nextId(prefix) : (form as T).id,
-    } as unknown as T;
+    let item: T;
 
     if (form === "new") {
+      if (config.onCreate) {
+        try {
+          item = await config.onCreate(value);
+        } catch (error) {
+          notify(
+            error instanceof Error ? error.message : `${config.singular} could not be created`,
+            "error"
+          );
+          return;
+        }
+      } else {
+        item = { ...value, id: nextId(prefix) } as unknown as T;
+      }
       create(config.key, item as never, `${config.singular} created`);
     } else {
+      item = { ...value, id: (form as T).id } as unknown as T;
       update(config.key, item as never, `${config.singular} updated`);
     }
     setForm(null);
@@ -92,11 +109,17 @@ export function SimpleDirectory<T extends { id: string; name: string }>({
     <>
       <PageHeader
         title={config.title}
-        description={config.description}
+        description={
+          config.backendNotice
+            ? `${config.description} ${config.backendNotice}`
+            : config.description
+        }
         action={
-          <Button onClick={() => setForm("new")}>
-            <Icon name="plus" size={16} /> Add {config.singular.toLowerCase()}
-          </Button>
+          !config.readOnly && (
+            <Button onClick={() => setForm("new")}>
+              <Icon name="plus" size={16} /> Add {config.singular.toLowerCase()}
+            </Button>
+          )
         }
       />
 
@@ -135,8 +158,8 @@ export function SimpleDirectory<T extends { id: string; name: string }>({
         rows={rows}
         columns={config.columns}
         onView={setView}
-        onEdit={(r) => setForm(r)}
-        onDelete={(r) => setDeleting(r)}
+        onEdit={!config.readOnly && !config.createOnly ? (r) => setForm(r) : undefined}
+        onDelete={!config.readOnly && !config.createOnly ? (r) => setDeleting(r) : undefined}
       />
 
       {form && (

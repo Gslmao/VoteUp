@@ -97,6 +97,12 @@ export function Icon({ name, size = 18, className }: IconProps) {
     ),
     collapse: <path d="m15 18-6-6 6-6" />,
     sort: <path d="m8 9 4-4 4 4M16 15l-4 4-4-4" />,
+    flag: (
+      <>
+        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+        <line x1="4" y1="22" x2="4" y2="15" />
+      </>
+    ),
     check: <path d="m5 12 4 4L19 6" />,
     info: (
       <>

@@ -5,7 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 
 interface LoginProps {
-  onLogin: () => void;
+  onLogin: (email: string, password: string) => Promise<void>;
 }
 
 export function Login({ onLogin }: LoginProps) {
@@ -13,8 +13,9 @@ export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     const next: Record<string, string> = {};
     if (!email) {
@@ -28,7 +29,16 @@ export function Login({ onLogin }: LoginProps) {
 
     setErrors(next);
     if (!Object.keys(next).length) {
-      onLogin();
+      setSubmitting(true);
+      try {
+        await onLogin(email, password);
+      } catch (error) {
+        setErrors({
+          form: error instanceof Error ? error.message : "Unable to sign in",
+        });
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -48,8 +58,7 @@ export function Login({ onLogin }: LoginProps) {
         <div className="demo-note">
           <Icon name="info" size={17} />
           <span>
-            <strong>Prototype access</strong> — enter any valid email and
-            password. No credentials are stored or transmitted.
+            Sign in with an administrator account configured on the backend.
           </span>
         </div>
         <form onSubmit={submit} noValidate>
@@ -57,7 +66,7 @@ export function Login({ onLogin }: LoginProps) {
             <span>Email address</span>
             <input
               type="email"
-              autoComplete="off"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="administrator@example.in"
@@ -69,7 +78,7 @@ export function Login({ onLogin }: LoginProps) {
             <div className="password-wrap">
               <input
                 type={show ? "text" : "password"}
-                autoComplete="off"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
@@ -86,10 +95,13 @@ export function Login({ onLogin }: LoginProps) {
               <small className="error">{errors.password}</small>
             )}
           </label>
-          <Button type="submit">Sign in to portal</Button>
+          {errors.form && <small className="error">{errors.form}</small>}
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Signing in..." : "Sign in to portal"}
+          </Button>
         </form>
         <p className="legal">
-          Demonstration system only. No connection to official electoral systems.
+          This system is not connected to official electoral systems.
         </p>
       </section>
     </main>

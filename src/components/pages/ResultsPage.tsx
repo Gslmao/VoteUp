@@ -1,131 +1,134 @@
 "use client";
 
-import React, { useState } from "react";
-import { Store } from "@/types/portal";
-import { seedResults } from "@/data/mockData";
+import React, { useEffect, useState } from "react";
+import { Store, Result } from "@/types/portal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Icon } from "@/components/ui/Icon";
-import { Badge } from "@/components/ui/Badge";
 import { DataTable } from "@/components/ui/DataTable";
+import { getApiJson, mapApiResults, ApiResult } from "@/lib/portalBackend";
 
 interface ResultsPageProps {
   store: Store;
+  backendConnected: boolean;
 }
 
-export function ResultsPage({ store: _store }: ResultsPageProps) {
-  const [election, setElection] = useState(seedResults[0]?.election ?? "");
-  const [constituency, setConstituency] = useState("");
+export function ResultsPage({ store, backendConnected }: ResultsPageProps) {
+  const [electionId, setElectionId] = useState("");
+  const [constituencyId, setConstituencyId] = useState("");
+  const [rows, setRows] = useState<Result[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const rows = seedResults.filter(
-    (r) =>
-      r.election === election &&
-      (!constituency || r.constituency === constituency)
-  );
+  const selectedElectionId = store.elections.some(
+    (election) => election.id === electionId
+  )
+    ? electionId
+    : store.elections[0]?.id ?? "";
 
-  const max = Math.max(...rows.map((r) => r.votes), 1);
-  const isFinal = rows.length > 0 && rows.every((r) => r.declared);
+  useEffect(() => {
+    if (!backendConnected || !selectedElectionId) {
+      return;
+    }
 
-  const electionOptions = Array.from(
-    new Set(seedResults.map((r) => r.election))
-  );
-  const constituencyOptions = Array.from(
-    new Set(
-      seedResults
-        .filter((r) => r.election === election)
-        .map((r) => r.constituency)
+    const controller = new AbortController();
+    const query = constituencyId
+      ? `?constituencyId=${encodeURIComponent(constituencyId)}`
+      : "";
+    const startTimeout = window.setTimeout(() => {
+      setLoading(true);
+      setError("");
+    }, 0);
+
+    void getApiJson<ApiResult[]>(
+    `/api/elections/${encodeURIComponent(selectedElectionId)}/results${query}`,
+      { signal: controller.signal }
     )
-  );
+      .then((data) => {
+        const electionName =
+          store.elections.find((election) => election.id === selectedElectionId)?.name ??
+          `Election ${selectedElectionId}`;
+        setRows(mapApiResults(data, electionName));
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          setRows([]);
+          setError(cause instanceof Error ? cause.message : "Unable to load results");
+        }
+      })
+      .finally(() => {
+        window.clearTimeout(startTimeout);
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(startTimeout);
+    };
+  }, [backendConnected, constituencyId, selectedElectionId, store.elections]);
+
+  const constituencyOptions = store.constituencies;
+  const visibleRows = backendConnected && selectedElectionId ? rows : [];
 
   return (
     <>
       <PageHeader
         title="Results"
-        description="Review fictional demonstration counts and declaration status."
+        description="Live vote totals from the backend. Results are provisional; the backend has no declaration workflow."
       />
 
       <div className="result-warning">
         <Icon name="alert" size={18} />
         <span>
-          <strong>
-            {isFinal
-              ? "Declared demonstration result"
-              : "Ongoing count — not a final result"}
-            .
-          </strong>{" "}
-          These fictional figures have no legal or official standing.
+          <strong>Provisional vote totals.</strong> These counts are not declared
+          final results.
         </span>
       </div>
+
+      {!backendConnected && (
+        <div className="empty">Sign in to load backend results.</div>
+      )}
 
       <div className="filters">
         <label className="field compact">
           <span>Election</span>
           <select
-            value={election}
-            onChange={(e) => {
-              setElection(e.target.value);
-              setConstituency("");
+            value={selectedElectionId}
+            onChange={(event) => {
+              setElectionId(event.target.value);
+              setConstituencyId("");
             }}
           >
-            {electionOptions.map((x) => (
-              <option key={x} value={x}>
-                {x}
+            {store.elections.map((election) => (
+              <option key={election.id} value={election.id}>
+                {election.name}
               </option>
             ))}
           </select>
         </label>
-
         <label className="field compact">
           <span>Constituency</span>
           <select
-            value={constituency}
-            onChange={(e) => setConstituency(e.target.value)}
+            value={constituencyId}
+            onChange={(event) => setConstituencyId(event.target.value)}
           >
             <option value="">All constituencies</option>
-            {constituencyOptions.map((x) => (
-              <option key={x} value={x}>
-                {x}
+            {constituencyOptions.map((constituency) => (
+              <option key={constituency.id} value={constituency.id}>
+                {constituency.name}
               </option>
             ))}
           </select>
         </label>
       </div>
 
-      <div className="results-layout">
-        <section className="panel comparison">
-          <div className="panel-head">
-            <div>
-              <h2>Candidate comparison</h2>
-              <p>Vote totals in selected scope</p>
-            </div>
-          </div>
-          {rows.map((r) => (
-            <div className="bar-row" key={r.id}>
-              <div>
-                <strong>{r.candidate}</strong>
-                <span>{r.party}</span>
-              </div>
-              <div className="bar-track">
-                <i style={{ width: `${(r.votes / max) * 100}%` }} />
-              </div>
-              <b>{r.votes.toLocaleString("en-IN")}</b>
-            </div>
-          ))}
-        </section>
-
-        <section className="panel declaration">
-          <span>Declaration status</span>
-          <Badge value={isFinal ? "COMPLETED" : "ONGOING"} />
-          <h3>{isFinal ? "Result declared" : "Counting in progress"}</h3>
-          <p>
-            {isFinal
-              ? rows[0]?.timestamp
-              : "Vote totals remain provisional until declaration."}
-          </p>
-        </section>
-      </div>
+      {error && <p className="error">{error}</p>}
+      {loading && <p>Loading results…</p>}
+      {!loading && !error && backendConnected && !electionId && (
+        <div className="empty">No ongoing election is available in the backend.</div>
+      )}
 
       <DataTable
-        rows={rows}
+        rows={visibleRows}
         columns={[
           { key: "rank", label: "Rank" },
           { key: "candidate", label: "Candidate" },
@@ -134,16 +137,8 @@ export function ResultsPage({ store: _store }: ResultsPageProps) {
           {
             key: "votes",
             label: "Vote total",
-            render: (r) => r.votes.toLocaleString("en-IN"),
+            render: (result) => result.votes.toLocaleString("en-IN"),
           },
-          {
-            key: "declared",
-            label: "Declaration",
-            render: (r) => (
-              <Badge value={r.declared ? "COMPLETED" : "ONGOING"} />
-            ),
-          },
-          { key: "timestamp", label: "Declaration timestamp" },
         ]}
       />
     </>
