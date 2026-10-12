@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./voters.css";
 
 :root {
   font-family: Inter, "Noto Sans", "Segoe UI", Arial, sans-serif;

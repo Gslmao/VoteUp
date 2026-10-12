@@ -1,6 +1,21 @@
 import { redirect } from "next/navigation";
 import { navItems } from "@/data/mockData";
 
+const voterPages = [
+  "dashboard",
+  "voter-details",
+  "elections",
+  "candidates",
+  "vote",
+  "cast-vote",
+  "history",
+  "voting-history",
+  "complaints",
+  "submit-complaint",
+  "help",
+  "settings",
+];
+
 export default async function LegacyRouteHandler({
   params,
 }: {
@@ -12,9 +27,13 @@ export default async function LegacyRouteHandler({
     redirect(`/admin/${page}`);
   }
 
-  if (page === "login") {
-    redirect("/admin");
+  if (voterPages.includes(page)) {
+    redirect(`/voters/${page}`);
   }
 
-  redirect("/");
+  if (page === "login") {
+    redirect("/voters/login");
+  }
+
+  redirect("/voters");
 }

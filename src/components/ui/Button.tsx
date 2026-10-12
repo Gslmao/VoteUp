@@ -1,13 +1,15 @@
 import React, { ReactNode } from "react";
+import { Icon } from "./Icon";
 
-interface ButtonProps {
+export interface ButtonProps {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "danger" | "ghost";
+  variant?: "primary" | "secondary" | "danger" | "ghost" | "text";
   type?: "button" | "submit";
   disabled?: boolean;
   className?: string;
   title?: string;
+  icon?: string;
 }
 
 export function Button({
@@ -18,6 +20,7 @@ export function Button({
   disabled = false,
   className = "",
   title,
+  icon,
 }: ButtonProps) {
   return (
     <button
@@ -28,6 +31,7 @@ export function Button({
       title={title}
     >
       {children}
+      {icon && <Icon name={icon} size={18} />}
     </button>
   );
 }
