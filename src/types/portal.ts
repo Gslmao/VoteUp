@@ -11,6 +11,8 @@ export type Election = {
   start: string;
   end: string;
   status: ElectionStatus;
+  constituency?: string;
+  eligibleConstituencies?: string[];
 };
 
 export type Constituency = {
@@ -123,9 +125,16 @@ export type PageKey =
 export type FieldConfig = {
   key: string;
   label: string;
-  type?: "text" | "date" | "number" | "select" | "textarea";
+  type?: "text" | "date" | "number" | "select" | "textarea" | "checkbox-group" | "custom";
   required?: boolean;
   options?: (string | { label: string; value: string })[];
+  fullWidth?: boolean;
+  render?: (
+    value: unknown,
+    onChange: (val: unknown) => void,
+    data: Record<string, unknown>,
+    setData?: React.Dispatch<React.SetStateAction<Record<string, unknown>>>
+  ) => ReactNode;
 };
 
 export type Column<T> = {

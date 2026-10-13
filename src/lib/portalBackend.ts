@@ -109,6 +109,8 @@ export function mapApiElection(election: ApiElection): Election {
     start: election.start_date,
     end: election.end_date,
     status: election.status,
+    constituency: "All Constituencies",
+    eligibleConstituencies: ["All Constituencies"],
   };
 }
 

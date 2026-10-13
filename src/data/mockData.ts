@@ -18,6 +18,15 @@ export const seedStore: Store = {
       start: "2025-04-18",
       end: "2025-05-23",
       status: "ONGOING",
+      constituency: "All Constituencies",
+      eligibleConstituencies: [
+        "New Delhi",
+        "Chandni Chowk",
+        "Bengaluru Central",
+        "Jaipur Urban",
+        "Chennai South",
+        "Pune Cantonment",
+      ],
     },
     {
       id: "EL-2025-02",
@@ -26,6 +35,8 @@ export const seedStore: Store = {
       start: "2025-06-05",
       end: "2025-06-05",
       status: "SCHEDULED",
+      constituency: "New Delhi, Chandni Chowk",
+      eligibleConstituencies: ["New Delhi", "Chandni Chowk"],
     },
     {
       id: "EL-2024-03",
@@ -34,6 +45,8 @@ export const seedStore: Store = {
       start: "2024-11-12",
       end: "2024-11-12",
       status: "COMPLETED",
+      constituency: "Bengaluru Central",
+      eligibleConstituencies: ["Bengaluru Central"],
     },
     {
       id: "EL-2025-04",
@@ -42,6 +55,8 @@ export const seedStore: Store = {
       start: "2025-07-15",
       end: "2025-07-15",
       status: "SCHEDULED",
+      constituency: "Bengaluru Central",
+      eligibleConstituencies: ["Bengaluru Central"],
     },
   ],
   constituencies: [

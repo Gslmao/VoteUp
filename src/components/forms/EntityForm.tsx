@@ -50,61 +50,93 @@ export function EntityForm({
     <Modal title={title} onClose={onClose}>
       <form onSubmit={submit} noValidate>
         <div className="modal-body form-grid">
-          {fields.map((field) => (
-            <label
-              className={`field ${field.type === "textarea" ? "field-full" : ""}`}
-              key={field.key}
-            >
-              <span>
-                {field.label}
-                {field.required && <b aria-hidden="true"> *</b>}
-              </span>
-              {field.type === "select" ? (
-                <select
-                  value={String(data[field.key] ?? "")}
-                  onChange={(e) =>
-                    setData({ ...data, [field.key]: e.target.value })
-                  }
+          {fields.map((field) => {
+            const isFull = Boolean(
+              field.fullWidth ||
+              field.type === "textarea" ||
+              field.type === "checkbox-group" ||
+              field.render
+            );
+
+            if (field.render) {
+              return (
+                <div
+                  className={`field ${isFull ? "field-full" : ""}`}
+                  key={field.key}
                 >
-                  <option value="">Select</option>
-                  {field.options?.map((o) => (
-                    <option
-                      key={typeof o === "string" ? o : o.value}
-                      value={typeof o === "string" ? o : o.value}
-                    >
-                      {typeof o === "string" ? o : o.label}
-                    </option>
-                  ))}
-                </select>
-              ) : field.type === "textarea" ? (
-                <textarea
-                  rows={4}
-                  value={String(data[field.key] ?? "")}
-                  onChange={(e) =>
-                    setData({ ...data, [field.key]: e.target.value })
-                  }
-                />
-              ) : (
-                <input
-                  type={field.type ?? "text"}
-                  value={String(data[field.key] ?? "")}
-                  min={field.type === "number" ? 0 : undefined}
-                  onChange={(e) =>
-                    setData({
-                      ...data,
-                      [field.key]:
-                        field.type === "number"
-                          ? Number(e.target.value)
-                          : e.target.value,
-                    })
-                  }
-                />
-              )}
-              {errors[field.key] && (
-                <small className="error">{errors[field.key]}</small>
-              )}
-            </label>
-          ))}
+                  <span>
+                    {field.label}
+                    {field.required && <b aria-hidden="true"> *</b>}
+                  </span>
+                  {field.render(
+                    data[field.key],
+                    (val) => setData((prev) => ({ ...prev, [field.key]: val })),
+                    data,
+                    setData
+                  )}
+                  {errors[field.key] && (
+                    <small className="error">{errors[field.key]}</small>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <label
+                className={`field ${isFull ? "field-full" : ""}`}
+                key={field.key}
+              >
+                <span>
+                  {field.label}
+                  {field.required && <b aria-hidden="true"> *</b>}
+                </span>
+                {field.type === "select" ? (
+                  <select
+                    value={String(data[field.key] ?? "")}
+                    onChange={(e) =>
+                      setData({ ...data, [field.key]: e.target.value })
+                    }
+                  >
+                    <option value="">Select</option>
+                    {field.options?.map((o) => (
+                      <option
+                        key={typeof o === "string" ? o : o.value}
+                        value={typeof o === "string" ? o : o.value}
+                      >
+                        {typeof o === "string" ? o : o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : field.type === "textarea" ? (
+                  <textarea
+                    rows={4}
+                    value={String(data[field.key] ?? "")}
+                    onChange={(e) =>
+                      setData({ ...data, [field.key]: e.target.value })
+                    }
+                  />
+                ) : (
+                  <input
+                    type={field.type ?? "text"}
+                    value={String(data[field.key] ?? "")}
+                    min={field.type === "number" ? 0 : undefined}
+                    onChange={(e) =>
+                      setData({
+                        ...data,
+                        [field.key]:
+                          field.type === "number"
+                            ? Number(e.target.value)
+                            : e.target.value,
+                      })
+                    }
+                  />
+                )}
+                {errors[field.key] && (
+                  <small className="error">{errors[field.key]}</small>
+                )}
+              </label>
+            );
+          })}
         </div>
         <div className="modal-actions">
           <Button variant="secondary" onClick={onClose}>

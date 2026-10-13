@@ -1,4 +1,4 @@
-const sessionLifetimeSeconds = 8 * 60 * 60;
+const sessionLifetimeSeconds = 0.25 * 60 * 60;
 
 export const config = {
   auth: {

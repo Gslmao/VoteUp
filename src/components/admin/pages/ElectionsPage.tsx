@@ -12,6 +12,7 @@ import { EntityForm } from "@/components/forms/EntityForm";
 import { Detail } from "@/components/ui/Detail";
 import { Confirm } from "@/components/ui/Confirm";
 import { formatDate, nextId } from "@/lib/formatters";
+import { ConstituencyPicker } from "@/components/admin/common/ConstituencyPicker";
 import {
   ApiElection,
   getApiJson,
@@ -30,6 +31,7 @@ export function ElectionsPage({
   const [search, setSearch] = useState("");
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
+  const [constituencyFilter, setConstituencyFilter] = useState("");
   const [form, setForm] = useState<Election | "new" | null>(null);
   const [view, setView] = useState<Election | null>(null);
   const [confirm, setConfirm] = useState<{
@@ -41,7 +43,13 @@ export function ElectionsPage({
     (e) =>
       e.name.toLowerCase().includes(search.toLowerCase()) &&
       (!type || e.type === type) &&
-      (!status || e.status === status)
+      (!status || e.status === status) &&
+      (!constituencyFilter ||
+        !e.constituency ||
+        e.constituency === "All Constituencies" ||
+        e.constituency.includes(constituencyFilter) ||
+        (e.eligibleConstituencies &&
+          e.eligibleConstituencies.includes(constituencyFilter)))
   );
 
   const fields: FieldConfig[] = [
@@ -54,6 +62,33 @@ export function ElectionsPage({
       options: backendConnected
         ? ["General", "State Assembly", "By-election"]
         : ["General", "State Assembly", "Local Body", "By-election"],
+    },
+    {
+      key: "constituency",
+      label: "Eligible constituency / Constituencies",
+      fullWidth: true,
+      required: true,
+      render: (value, onChange, data, setData) => (
+        <ConstituencyPicker
+          value={String(value || "All Constituencies")}
+          selectedList={
+            Array.isArray(data.eligibleConstituencies)
+              ? (data.eligibleConstituencies as string[])
+              : undefined
+          }
+          constituencies={store.constituencies}
+          onChange={(summary, list) => {
+            onChange(summary);
+            if (setData) {
+              setData((prev) => ({
+                ...prev,
+                constituency: summary,
+                eligibleConstituencies: list,
+              }));
+            }
+          }}
+        />
+      ),
     },
     { key: "start", label: "Start date", type: "date", required: true },
     { key: "end", label: "End date", type: "date", required: true },
@@ -113,6 +148,10 @@ export function ElectionsPage({
     const item = {
       ...value,
       id: form === "new" ? nextId("EL") : (form as Election).id,
+      constituency: String(value.constituency || "All Constituencies"),
+      eligibleConstituencies: Array.isArray(value.eligibleConstituencies)
+        ? (value.eligibleConstituencies as string[])
+        : [String(value.constituency || "All Constituencies")],
     } as Election;
 
     if (form === "new") {
@@ -190,6 +229,18 @@ export function ElectionsPage({
           )}
         </select>
         <select
+          aria-label="Filter by constituency"
+          value={constituencyFilter}
+          onChange={(e) => setConstituencyFilter(e.target.value)}
+        >
+          <option value="">All constituencies</option>
+          {store.constituencies.map((c) => (
+            <option key={c.id} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <select
           aria-label="Election status"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
@@ -208,6 +259,24 @@ export function ElectionsPage({
         columns={[
           { key: "name", label: "Election name" },
           { key: "type", label: "Election type" },
+          {
+            key: "constituency",
+            label: "Eligible constituency",
+            render: (r) => (
+              <span
+                style={{
+                  display: "inline-block",
+                  maxWidth: "200px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={r.constituency || "All Constituencies"}
+              >
+                {r.constituency || "All Constituencies"}
+              </span>
+            ),
+          },
           {
             key: "start",
             label: "Start date",
@@ -250,17 +319,33 @@ export function ElectionsPage({
             form === "new"
               ? {
                   name: "",
-                  type: "",
+                  type: "General",
+                  constituency: "All Constituencies",
+                  eligibleConstituencies: store.constituencies.map((c) => c.name),
                   start: "",
                   end: "",
                   status: "SCHEDULED",
                 }
-              : form
+              : {
+                  ...form,
+                  constituency: form.constituency || "All Constituencies",
+                  eligibleConstituencies:
+                    form.eligibleConstituencies ||
+                    (form.constituency && form.constituency !== "All Constituencies"
+                      ? form.constituency.split(", ").map((s) => s.trim())
+                      : store.constituencies.map((c) => c.name)),
+                }
           }
           validate={(v): Record<string, string> => {
             const errs: Record<string, string> = {};
             if (String(v.end) < String(v.start)) {
               errs.end = "End date must be on or after the start date";
+            }
+            const elig = Array.isArray(v.eligibleConstituencies)
+              ? (v.eligibleConstituencies as string[])
+              : [];
+            if (!v.constituency && elig.length === 0) {
+              errs.constituency = "Please select at least one eligible constituency";
             }
             return errs;
           }}
@@ -276,6 +361,8 @@ export function ElectionsPage({
           onClose={() => setView(null)}
           extras={
             <div className="related">
+              <h3>Eligible constituencies</h3>
+              <p>{view.constituency || "All Constituencies"}</p>
               <h3>Assigned observers</h3>
               {store.observers
                 .filter((o) => o.election === view.name)

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { FormEvent, useState } from "react";
+import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 
@@ -45,10 +46,29 @@ export function Login({ onLogin }: LoginProps) {
   return (
     <main className="login">
       <section className="login-panel">
-        <div className="brand-mark" aria-hidden="true">
-          <span />
-          <span />
-          <span />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+          <div className="brand-mark" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <Link
+            href="/voters"
+            style={{
+              fontSize: "11px",
+              color: "var(--blue)",
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "4px 8px",
+              border: "1px solid var(--border)",
+              borderRadius: "3px",
+              background: "#fafbfc",
+            }}
+          >
+            ← Voter Portal
+          </Link>
         </div>
         <p className="eyebrow">Election Management System</p>
         <h1>Administration Portal</h1>

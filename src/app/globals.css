@@ -709,6 +709,131 @@ tbody tr:hover { background: #f9fbfc; }
 .field.compact { min-width: 220px; }
 .error { color: var(--danger); font-size: 10px; font-weight: 500; }
 
+.constituency-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f8fafc;
+  border: 1px solid #d9e2ec;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.picker-dropdown-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.picker-dropdown-row select {
+  flex: 1;
+  background: white;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-picker-action {
+  background: white;
+  border: 1px solid #bcc8d5;
+  color: var(--navy);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-picker-action:hover {
+  background: #edf4fa;
+  border-color: var(--blue);
+}
+
+.picker-checkbox-section {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.picker-checkbox-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #486581;
+  margin-bottom: 8px;
+}
+
+.picker-counter {
+  font-size: 10px;
+  color: var(--blue);
+  background: #e6f0fa;
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+.picker-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.picker-checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: white;
+  border: 1px solid #d9e2ec;
+  border-radius: 3px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: normal;
+  transition: border-color .15s, background-color .15s;
+}
+
+.picker-checkbox-item:hover {
+  border-color: var(--blue);
+  background: #f7fafd;
+}
+
+.picker-checkbox-item-checked {
+  border-color: var(--blue);
+  background: #f0f7fd;
+}
+
+.picker-checkbox-item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  min-height: 15px;
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: var(--navy);
+}
+
+.picker-checkbox-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.picker-checkbox-label strong {
+  color: #1b2733;
+  font-size: 11px;
+}
+
+.picker-checkbox-label small {
+  color: #627d98;
+  font-size: 10px;
+}
+
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; margin: 0; border: 1px solid var(--border); }
 .detail-grid div { padding: 13px; border-bottom: 1px solid var(--border); }
 .detail-grid div:nth-child(odd) { border-right: 1px solid var(--border); }
