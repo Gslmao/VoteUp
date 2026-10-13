@@ -1,4 +1,7 @@
--- Adds audited admin election CRUD and status transitions.
+-- ============================================================
+-- RPC: ELECTIONS
+-- Administrative CRUD and the supported lifecycle transitions.
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.admin_create_election_api(
     p_admin_id INT,
     p_election_name VARCHAR(150),
@@ -150,28 +153,68 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.admin_create_election_api(
-    INT, VARCHAR, VARCHAR, DATE, DATE
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.admin_update_election_api(
-    INT, INT, VARCHAR, VARCHAR, DATE, DATE
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.admin_set_election_status_api(
-    INT, INT, VARCHAR
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.admin_delete_election_api(
-    INT, INT
-) FROM PUBLIC, anon, authenticated;
+-- Election lifecycle: SCHEDULED -> ONGOING -> COMPLETED
+CREATE OR REPLACE FUNCTION public.set_election_status_api(
+    p_election_id INT, p_status VARCHAR(20)
+)
+RETURNS SETOF public.elections
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_current VARCHAR(20);
+BEGIN
+    SELECT status INTO v_current FROM public.elections
+    WHERE election_id = p_election_id FOR UPDATE;
 
-GRANT EXECUTE ON FUNCTION public.admin_create_election_api(
-    INT, VARCHAR, VARCHAR, DATE, DATE
-) TO service_role;
-GRANT EXECUTE ON FUNCTION public.admin_update_election_api(
-    INT, INT, VARCHAR, VARCHAR, DATE, DATE
-) TO service_role;
-GRANT EXECUTE ON FUNCTION public.admin_set_election_status_api(
-    INT, INT, VARCHAR
-) TO service_role;
-GRANT EXECUTE ON FUNCTION public.admin_delete_election_api(
-    INT, INT
-) TO service_role;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Election not found' USING ERRCODE = 'VT005';
+    END IF;
+
+    IF NOT (
+        (v_current = 'SCHEDULED' AND p_status = 'ONGOING') OR
+        (v_current = 'ONGOING'   AND p_status = 'COMPLETED')
+    ) THEN
+        RAISE EXCEPTION 'Invalid election transition % -> %', v_current, p_status
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    RETURN QUERY
+    UPDATE public.elections SET status = p_status
+    WHERE election_id = p_election_id
+    RETURNING *;
+END;
+$$;
+
+-- Declare results: closes the election and stamps declared_at. Returns rows declared.
+CREATE OR REPLACE FUNCTION public.declare_results_api(
+    p_election_id INT
+)
+RETURNS INT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_status VARCHAR(20);
+    v_count  INT;
+BEGIN
+    SELECT status INTO v_status FROM public.elections
+    WHERE election_id = p_election_id FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Election not found' USING ERRCODE = 'VT005';
+    END IF;
+
+    IF v_status = 'SCHEDULED' THEN
+        RAISE EXCEPTION 'Cannot declare results for an election that has not started'
+            USING ERRCODE = 'VT008';
+    END IF;
+
+    UPDATE public.elections SET status = 'COMPLETED' WHERE election_id = p_election_id;
+
+    UPDATE public.results
+    SET declared_at = COALESCE(declared_at, NOW())
+    WHERE election_id = p_election_id;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+
+    RETURN v_count;
+END;
+$$;

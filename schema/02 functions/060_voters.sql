@@ -1,5 +1,7 @@
--- Adds transactional, audited admin voter writes. Apply once to an existing
--- database; fresh installs already receive these functions from schema.sql.
+-- ============================================================
+-- RPC: ADMIN VOTER CRUD
+-- Audit metadata deliberately excludes voter PII.
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.admin_create_voter_api(
     p_admin_id INT,
     p_epic_number VARCHAR(20),
@@ -109,23 +111,3 @@ BEGIN
     RETURN TRUE;
 END;
 $$;
-
-REVOKE ALL ON FUNCTION public.admin_create_voter_api(
-    INT, VARCHAR, VARCHAR, DATE, INT
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.admin_update_voter_api(
-    INT, INT, VARCHAR, VARCHAR, DATE, INT
-) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.admin_delete_voter_api(
-    INT, INT
-) FROM PUBLIC, anon, authenticated;
-
-GRANT EXECUTE ON FUNCTION public.admin_create_voter_api(
-    INT, VARCHAR, VARCHAR, DATE, INT
-) TO service_role;
-GRANT EXECUTE ON FUNCTION public.admin_update_voter_api(
-    INT, INT, VARCHAR, VARCHAR, DATE, INT
-) TO service_role;
-GRANT EXECUTE ON FUNCTION public.admin_delete_voter_api(
-    INT, INT
-) TO service_role;

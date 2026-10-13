@@ -1,4 +1,36 @@
--- Atomic, audited writes for party, constituency, and observer reference data.
+-- ============================================================
+-- RPC: REFERENCE DATA
+-- Lookups plus atomic, audited writes for parties, constituencies
+-- and observers.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_states_api()
+RETURNS SETOF public.states
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT * FROM public.states ORDER BY state_name;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_constituencies_api(
+    p_state_id INT DEFAULT NULL
+)
+RETURNS SETOF public.constituencies
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT * FROM public.constituencies
+    WHERE p_state_id IS NULL OR state_id = p_state_id
+    ORDER BY name;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_parties_api()
+RETURNS SETOF public.parties
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT * FROM public.parties ORDER BY party_name;
+$$;
+
 CREATE OR REPLACE FUNCTION public.admin_mutate_reference_api(
     p_admin_id INT,
     p_entity VARCHAR(20),
@@ -113,10 +145,3 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-
-REVOKE ALL ON FUNCTION public.admin_mutate_reference_api(
-    INT, VARCHAR, VARCHAR, INT, JSONB
-) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_mutate_reference_api(
-    INT, VARCHAR, VARCHAR, INT, JSONB
-) TO service_role;

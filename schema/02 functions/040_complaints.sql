@@ -1,4 +1,8 @@
--- Audited admin complaint-status updates.
+-- ============================================================
+-- RPC: COMPLAINTS
+-- ============================================================
+
+-- A voter may only file a complaint for their own constituency.
 CREATE OR REPLACE FUNCTION public.create_complaint_api(
     p_voter_id INT,
     p_constituency_id INT,
@@ -9,9 +13,9 @@ RETURNS SETOF public.complaints
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_filed_by VARCHAR(150);
+    v_filed_by    VARCHAR(150);
     v_voter_const INT;
-    v_complaint public.complaints%ROWTYPE;
+    v_complaint   public.complaints%ROWTYPE;
 BEGIN
     SELECT full_name, constituency_id INTO v_filed_by, v_voter_const
     FROM public.voters
@@ -27,9 +31,9 @@ BEGIN
     END IF;
 
     INSERT INTO public.complaints (
-        filed_by, constituency_id, election_id, description
+        voter_id, filed_by, constituency_id, election_id, description
     )
-    VALUES (v_filed_by, p_constituency_id, p_election_id, p_description)
+    VALUES (p_voter_id, v_filed_by, p_constituency_id, p_election_id, p_description)
     RETURNING * INTO v_complaint;
 
     INSERT INTO public.audit_log (table_name, operation, row_id, details)
@@ -44,6 +48,20 @@ BEGIN
         )
     );
     RETURN NEXT v_complaint;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_complaint_status_api(
+    p_complaint_id INT, p_status VARCHAR(20)
+)
+RETURNS SETOF public.complaints
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    UPDATE public.complaints SET status = p_status
+    WHERE complaint_id = p_complaint_id
+    RETURNING *;
 END;
 $$;
 
@@ -80,10 +98,3 @@ BEGIN
     RETURN NEXT v_complaint;
 END;
 $$;
-
-REVOKE ALL ON FUNCTION public.admin_set_complaint_status_api(
-    INT, INT, VARCHAR
-) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_set_complaint_status_api(
-    INT, INT, VARCHAR
-) TO service_role;
